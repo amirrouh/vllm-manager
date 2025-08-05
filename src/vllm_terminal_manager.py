@@ -273,9 +273,19 @@ class ModelManager:
 
         # Start the model
         model.status = ModelStatus.STARTING
+        print(f"🚀 Starting model {name}...")
+        print(f"📊 GPU Memory: {model.config.gpu_memory_utilization*100:.0f}% ({required_memory:.0f}MB)")
+        print(f"🔌 Port: {model.config.port}")
+        
+        # Get the directory where this script is located and venv python path
+        script_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        venv_python = os.path.join(script_dir, ".venv", "bin", "python")
+        
+        if not os.path.exists(venv_python):
+            return False, f"Virtual environment Python not found at {venv_python}"
         
         cmd = [
-            "python", "-m", "vllm.entrypoints.openai.api_server",
+            venv_python, "-m", "vllm.entrypoints.openai.api_server",
             "--model", model.config.huggingface_id,
             "--host", "0.0.0.0",
             "--port", str(model.config.port),
@@ -286,10 +296,10 @@ class ModelManager:
             "--enforce-eager",
             "--disable-log-requests"
         ]
+        
+        print(f"⚙️  Command: {' '.join(cmd[:4])} ... (additional args hidden)")
 
         try:
-            # Get the directory where this script is located
-            script_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
             
             process = subprocess.Popen(
                 cmd,
@@ -302,35 +312,50 @@ class ModelManager:
             
             model.pid = process.pid
             model.start_time = datetime.now()
+            print(f"🔄 Process started (PID: {process.pid})")
+            print("⏳ Waiting for model to initialize (this may take 30-60 seconds)...")
             
             # Wait for health check
             for attempt in range(30):  # 60 seconds timeout
+                print(f"🔍 Health check attempt {attempt + 1}/30...", end=" ", flush=True)
                 if self._check_model_health(model):
                     model.status = ModelStatus.RUNNING
+                    print("✅")
+                    print(f"🎉 Model {name} started successfully on port {model.config.port}")
                     return True, f"Model {name} started successfully on port {model.config.port}"
                 
                 # Check if process is still running
                 if process.poll() is not None:
+                    print("❌")
                     # Process has died, get the error output
                     _, stderr = process.communicate()
                     model.status = ModelStatus.ERROR
                     model.pid = None
                     
+                    print(f"💥 Process terminated unexpectedly")
+                    if stderr:
+                        print(f"📋 Error output:\n{stderr[-500:]}")
+                    
                     # Check for common errors and provide helpful messages
                     if "gated repo" in stderr or "restricted" in stderr or "authenticated" in stderr:
                         return False, ("Model requires Hugging Face authentication. Run: "
                                      "huggingface-cli login --token <your_token>")
+                    elif "Free memory" in stderr and "GPU memory utilization" in stderr:
+                        return False, f"Insufficient GPU memory. Try reducing gpu_memory_utilization in config."
                     elif "unrecognized arguments" in stderr:
                         return False, f"vLLM version incompatibility: {stderr[-200:]}"
                     else:
                         return False, f"Model failed to start: {stderr[-300:] if stderr else 'Unknown error'}"
+                
+                print("⏳")
                 time.sleep(2)
             
             # Timeout
+            print("⏰ Timeout reached, killing process...")
             self.system_monitor.kill_process(process.pid)
             model.status = ModelStatus.ERROR
             model.pid = None
-            return False, "Model failed to start within timeout"
+            return False, "Model failed to start within timeout (60 seconds)"
             
         except Exception as e:
             model.status = ModelStatus.ERROR

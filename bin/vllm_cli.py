@@ -241,9 +241,9 @@ Examples:
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
-  ./vllm add llama-3.1-8b meta-llama/Llama-3.1-8B-Instruct --port 9798
-  ./vllm add mistral-7b mistralai/Mistral-7B-Instruct-v0.2 --port 8001 --priority 2
-  ./vllm add codellama codellama/CodeLlama-7b-Instruct-hf --port 8002 --gpu-memory 0.5 --max-len 4096
+  ./vm add llama-3.1-8b meta-llama/Llama-3.1-8B-Instruct --port 9798
+  ./vm add mistral-7b mistralai/Mistral-7B-Instruct-v0.2 --port 8001 --priority 2
+  ./vm add codellama codellama/CodeLlama-7b-Instruct-hf --port 8002 --gpu-memory 0.5 --max-len 4096
         """)
     add_parser.add_argument('name', help='Short name for the model (e.g., "llama-3.1-8b")')
     add_parser.add_argument('model_id', help='HuggingFace model ID (e.g., "meta-llama/Llama-3.1-8B-Instruct")')
@@ -264,7 +264,7 @@ Examples:
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
-  ./vllm list                    # Show all models with their status
+  ./vm list                    # Show all models with their status
         """)
     list_parser.set_defaults(func=list_models_command)
     
@@ -274,8 +274,8 @@ Examples:
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
-  ./vllm start llama-3.1-8b      # Start the llama-3.1-8b model
-  ./vllm start mistral-7b        # Start the mistral-7b model
+  ./vm start llama-3.1-8b      # Start the llama-3.1-8b model
+  ./vm start mistral-7b        # Start the mistral-7b model
         """)
     start_parser.add_argument('name', help='Model name to start (use "list" command to see available models)')
     start_parser.set_defaults(func=start_model_command)
@@ -286,8 +286,8 @@ Examples:
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
-  ./vllm stop llama-3.1-8b       # Stop the llama-3.1-8b model
-  ./vllm stop mistral-7b         # Stop the mistral-7b model
+  ./vm stop llama-3.1-8b       # Stop the llama-3.1-8b model
+  ./vm stop mistral-7b         # Stop the mistral-7b model
         """)
     stop_parser.add_argument('name', help='Model name to stop (must be currently running)')
     stop_parser.set_defaults(func=stop_model_command)
@@ -298,8 +298,8 @@ Examples:
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
-  ./vllm remove llama-3.1-8b     # Remove llama-3.1-8b configuration
-  ./vllm remove mistral-7b       # Remove mistral-7b configuration
+  ./vm remove llama-3.1-8b     # Remove llama-3.1-8b configuration
+  ./vm remove mistral-7b       # Remove mistral-7b configuration
         """)
     remove_parser.add_argument('name', help='Model name to remove from configuration')
     remove_parser.set_defaults(func=remove_model_command)
@@ -310,7 +310,7 @@ Examples:
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
-  ./vllm status                  # Show GPU usage, memory, and model statuses
+  ./vm status                  # Show GPU usage, memory, and model statuses
         """)
     status_parser.set_defaults(func=status_command)
     
@@ -320,7 +320,7 @@ Examples:
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
-  ./vllm cleanup                 # Kill ALL GPU processes (requires typing 'CLEANUP')
+  ./vm cleanup                 # Kill ALL GPU processes (requires typing 'CLEANUP')
 
 WARNING: This command kills ALL GPU processes and may freeze your desktop!
 Intended for headless Linux servers only.
@@ -334,7 +334,7 @@ Intended for headless Linux servers only.
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
-  ./vllm force                   # Kill EVERYTHING on GPU (requires typing 'NUCLEAR')
+  ./vm force                   # Kill EVERYTHING on GPU (requires typing 'NUCLEAR')
   
 DANGER: This command kills ALL GPU processes including desktop/display drivers!
 Your system may freeze and require a hard reboot. Only use on headless servers!

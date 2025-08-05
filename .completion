@@ -1,5 +1,5 @@
 # VLLM Manager Bash Completion
-# Source this file before using the vllm command: source .completion
+# Source this file before using the vm command: source .completion
 
 # Get the directory where this script is located
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -12,7 +12,7 @@ if [[ -f "$SCRIPT_DIR/.env" ]]; then
     echo "✅ Environment variables loaded from .env"
 fi
 
-_vllm_completion() {
+_vm_completion() {
     local cur prev opts
     COMPREPLY=()
     cur="${COMP_WORDS[COMP_CWORD]}"
@@ -31,7 +31,7 @@ _vllm_completion() {
         esac
     else
         case "${prev}" in
-            vllm|./vllm)
+            vm|./vm)
                 COMPREPLY=( $(compgen -W "${opts}" -- ${cur}) )
                 return 0
                 ;;
@@ -51,8 +51,8 @@ _vllm_completion() {
     COMPREPLY=( $(compgen -W "${opts}" -- ${cur}) )
 }
 
-complete -F _vllm_completion vllm
-complete -F _vllm_completion ./vllm
+complete -F _vm_completion vm
+complete -F _vm_completion ./vm
 
 echo "💡 VLLM Manager bash completion loaded!"
-echo "   Use tab completion with: ./vllm <tab>"
+echo "   Use tab completion with: ./vm <tab>"

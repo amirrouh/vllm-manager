@@ -38,16 +38,23 @@ fi
 if [[ -n "$MISSING_DEPS" ]]; then
     echo "⚠️  Missing system dependencies:$MISSING_DEPS"
     echo ""
-    echo "Please install them by running:"
-    echo "  sudo apt-get update"
-    echo "  sudo apt-get install -y python3-dev gcc g++ build-essential"
-    echo ""
-    echo "For Python 3.12 specifically:"
-    echo "  sudo apt-get install -y python3.12-dev"
-    echo ""
-    read -p "Continue anyway? (y/n) " -n 1 -r
-    echo
-    if [[ ! $REPLY =~ ^[Yy]$ ]]; then
+    echo "Installing system dependencies with sudo..."
+    echo "You may be prompted for your password."
+    
+    # Update package lists
+    if sudo apt-get update; then
+        echo "✅ Package lists updated"
+    else
+        echo "❌ Failed to update package lists"
+        exit 1
+    fi
+    
+    # Install missing dependencies
+    if sudo apt-get install -y build-essential python3-dev python3.12-dev gcc g++ pkg-config; then
+        echo "✅ System dependencies installed successfully"
+    else
+        echo "❌ Failed to install system dependencies"
+        echo "Please manually run: sudo apt-get install -y build-essential python3-dev python3.12-dev gcc g++ pkg-config"
         exit 1
     fi
 fi
@@ -146,7 +153,7 @@ fi
 echo "🔧 Setting up bash completion..."
 cat > "$SCRIPT_DIR/.completion" << 'EOF'
 # VLLM Manager Bash Completion
-# Source this file before using the vllm command: source .completion
+# Source this file before using the vm command: source .completion
 
 # Get the directory where this script is located
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -159,7 +166,7 @@ if [[ -f "$SCRIPT_DIR/.env" ]]; then
     echo "✅ Environment variables loaded from .env"
 fi
 
-_vllm_completion() {
+_vm_completion() {
     local cur prev opts
     COMPREPLY=()
     cur="${COMP_WORDS[COMP_CWORD]}"
@@ -178,7 +185,7 @@ _vllm_completion() {
         esac
     else
         case "${prev}" in
-            vllm|./vllm)
+            vm|./vm)
                 COMPREPLY=( $(compgen -W "${opts}" -- ${cur}) )
                 return 0
                 ;;
@@ -198,15 +205,15 @@ _vllm_completion() {
     COMPREPLY=( $(compgen -W "${opts}" -- ${cur}) )
 }
 
-complete -F _vllm_completion vllm
-complete -F _vllm_completion ./vllm
+complete -F _vm_completion vm
+complete -F _vm_completion ./vm
 
 echo "💡 VLLM Manager bash completion loaded!"
-echo "   Use tab completion with: ./vllm <tab>"
+echo "   Use tab completion with: ./vm <tab>"
 EOF
 
 # Make scripts executable
-chmod +x "$SCRIPT_DIR/vllm"
+chmod +x "$SCRIPT_DIR/vm"
 chmod +x "$SCRIPT_DIR/install.sh"
 
 echo ""
@@ -218,11 +225,11 @@ echo "1. Source the completion script:"
 echo "   source .completion"
 echo ""
 echo "2. Run the manager:"
-echo "   ./vllm                    # Launch terminal UI"
-echo "   ./vllm status            # Check system status"
-echo "   ./vllm add <name> <id>   # Add a model"
+echo "   ./vm                    # Launch terminal UI"
+echo "   ./vm status            # Check system status"
+echo "   ./vm add <name> <id>   # Add a model"
 echo ""
 echo "💡 Pro tip: Add 'source $(pwd)/.completion' to your ~/.bashrc"
 echo "   to automatically load completion in new terminal sessions"
 echo ""
-echo "📚 For more help: ./vllm --help"
+echo "📚 For more help: ./vm --help"
