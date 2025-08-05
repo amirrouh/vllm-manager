@@ -16,6 +16,42 @@ if [[ "$OSTYPE" != "linux-gnu"* ]]; then
     exit 1
 fi
 
+# Check for required system packages
+echo "🔍 Checking system dependencies..."
+MISSING_DEPS=""
+
+# Check for Python development headers
+if ! pkg-config --exists python3 2>/dev/null && ! ls /usr/include/python3* 2>/dev/null | grep -q Python.h; then
+    MISSING_DEPS="$MISSING_DEPS python3-dev"
+fi
+
+# Check for gcc
+if ! command -v gcc &> /dev/null; then
+    MISSING_DEPS="$MISSING_DEPS gcc"
+fi
+
+# Check for g++
+if ! command -v g++ &> /dev/null; then
+    MISSING_DEPS="$MISSING_DEPS g++"
+fi
+
+if [[ -n "$MISSING_DEPS" ]]; then
+    echo "⚠️  Missing system dependencies:$MISSING_DEPS"
+    echo ""
+    echo "Please install them by running:"
+    echo "  sudo apt-get update"
+    echo "  sudo apt-get install -y python3-dev gcc g++ build-essential"
+    echo ""
+    echo "For Python 3.12 specifically:"
+    echo "  sudo apt-get install -y python3.12-dev"
+    echo ""
+    read -p "Continue anyway? (y/n) " -n 1 -r
+    echo
+    if [[ ! $REPLY =~ ^[Yy]$ ]]; then
+        exit 1
+    fi
+fi
+
 # Function to install with uv
 install_with_uv() {
     echo "📦 Installing with uv..."
@@ -87,11 +123,41 @@ else
     exit 1
 fi
 
+# Check for .env file
+if [[ ! -f "$SCRIPT_DIR/.env" ]]; then
+    if [[ -f "$SCRIPT_DIR/.env.example" ]]; then
+        echo "📝 Creating .env file from .env.example..."
+        cp "$SCRIPT_DIR/.env.example" "$SCRIPT_DIR/.env"
+        echo "⚠️  Please edit .env and add your HF_TOKEN for accessing gated models"
+    else
+        echo "📝 Creating default .env file..."
+        cat > "$SCRIPT_DIR/.env" << 'ENVEOF'
+# VLLM Manager Environment Variables
+# Get your token at: https://huggingface.co/settings/tokens
+HF_TOKEN=your_huggingface_token_here
+ENVEOF
+        echo "⚠️  Please edit .env and add your HF_TOKEN for accessing gated models"
+    fi
+else
+    echo "✅ .env file already exists"
+fi
+
 # Create completion script
 echo "🔧 Setting up bash completion..."
 cat > "$SCRIPT_DIR/.completion" << 'EOF'
 # VLLM Manager Bash Completion
 # Source this file before using the vllm command: source .completion
+
+# Get the directory where this script is located
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+# Source the .env file if it exists
+if [[ -f "$SCRIPT_DIR/.env" ]]; then
+    set -a  # Export all variables
+    source "$SCRIPT_DIR/.env"
+    set +a  # Stop exporting
+    echo "✅ Environment variables loaded from .env"
+fi
 
 _vllm_completion() {
     local cur prev opts

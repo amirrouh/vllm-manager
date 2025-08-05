@@ -162,7 +162,21 @@ def cleanup_command(args):
     """Aggressive GPU cleanup command"""
     manager = ModelManager()
     
-    print("🧹 Starting aggressive GPU cleanup...")
+    print("⚠️  WARNING: This will kill ALL GPU processes (including desktop/display)!")
+    print("🖥️  This is intended for headless Linux servers.")
+    print("🔄 Your desktop may freeze and require a restart.")
+    print()
+    
+    try:
+        response = input("Type 'CLEANUP' to continue or anything else to abort: ")
+        if response != "CLEANUP":
+            print("\nAborted.")
+            return 0
+    except KeyboardInterrupt:
+        print("\nAborted.")
+        return 0
+    
+    print("🧹 Starting aggressive GPU cleanup with sudo...")
     success, message = manager.aggressive_gpu_cleanup(preserve_priority=args.preserve_priority)
     
     if success:
@@ -178,13 +192,17 @@ def force_command(args):
     """Force GPU cleanup command"""
     manager = ModelManager()
     
-    print("💥 Starting FORCE GPU cleanup...")
-    print("⚠️  This will kill ALL non-critical GPU processes!")
+    print("💥 NUCLEAR GPU CLEANUP - KILLS EVERYTHING!")
+    print("⚠️  WARNING: This will kill ALL GPU processes with sudo!")
+    print("🖥️  Desktop, games, ML processes - EVERYTHING will be terminated!")
+    print("🔄 Your system may become unresponsive and require reboot!")
+    print("🚀 Only use this on headless Linux servers!")
+    print()
     
     try:
-        response = input("Are you sure? (type 'FORCE' to confirm): ")
-        if response != "FORCE":
-            print("Aborted.")
+        response = input("Type 'NUCLEAR' to continue or anything else to abort: ")
+        if response != "NUCLEAR":
+            print("\nAborted.")
             return 0
     except KeyboardInterrupt:
         print("\nAborted.")
@@ -298,26 +316,29 @@ Examples:
     
     # GPU cleanup commands
     cleanup_parser = subparsers.add_parser('cleanup', 
-        help='Clean up GPU memory by killing low-priority processes',
+        help='Clean up GPU memory by killing ALL GPU processes with sudo',
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
-  ./vllm cleanup                 # Kill processes with priority > 1 (preserves critical)
-  ./vllm cleanup --preserve-priority 2  # Kill processes with priority > 2
+  ./vllm cleanup                 # Kill ALL GPU processes (requires typing 'CLEANUP')
+
+WARNING: This command kills ALL GPU processes and may freeze your desktop!
+Intended for headless Linux servers only.
         """)
-    cleanup_parser.add_argument('--preserve-priority', type=int, default=1,
-                               help='Preserve processes with this priority and higher (1=critical, 5=disposable)')
+    cleanup_parser.add_argument('--preserve-priority', type=int, default=0,
+                               help='Preserve processes with this priority and higher (IGNORED - kills everything)')
     cleanup_parser.set_defaults(func=cleanup_command)
     
     force_parser = subparsers.add_parser('force', 
-        help='Force GPU cleanup - kill ALL non-critical processes (DANGEROUS)',
+        help='NUCLEAR GPU cleanup - kill EVERYTHING with sudo (EXTREMELY DANGEROUS)',
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
-  ./vllm force                   # Kill ALL processes except priority 1 (requires typing 'FORCE')
+  ./vllm force                   # Kill EVERYTHING on GPU (requires typing 'NUCLEAR')
   
-WARNING: This command kills ALL GPU processes except priority 1 (critical).
-You must type 'FORCE' to confirm this destructive operation.
+DANGER: This command kills ALL GPU processes including desktop/display drivers!
+Your system may freeze and require a hard reboot. Only use on headless servers!
+You must type 'NUCLEAR' to confirm this destructive operation.
         """)
     force_parser.set_defaults(func=force_command)
     

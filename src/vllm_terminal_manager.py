@@ -143,16 +143,26 @@ class SystemMonitor:
             return []
 
     @staticmethod
-    def kill_process(pid: int) -> bool:
-        """Kill a process by PID"""
+    def kill_process(pid: int, use_sudo: bool = False) -> bool:
+        """Kill a process by PID, optionally with sudo"""
         try:
-            os.kill(pid, 15)  # SIGTERM
-            time.sleep(1)
-            try:
-                os.kill(pid, 9)  # SIGKILL
-            except ProcessLookupError:
-                pass
-            return True
+            if use_sudo:
+                # Use sudo to kill process with SIGTERM first, then SIGKILL
+                result = subprocess.run(["sudo", "kill", "-15", str(pid)], 
+                                      capture_output=True, text=True)
+                time.sleep(1)
+                # Force kill if still running
+                subprocess.run(["sudo", "kill", "-9", str(pid)], 
+                             capture_output=True, text=True)
+                return result.returncode == 0
+            else:
+                os.kill(pid, 15)  # SIGTERM
+                time.sleep(1)
+                try:
+                    os.kill(pid, 9)  # SIGKILL
+                except ProcessLookupError:
+                    pass
+                return True
         except Exception:
             return False
 
@@ -270,7 +280,6 @@ class ModelManager:
             "--host", "0.0.0.0",
             "--port", str(model.config.port),
             "--trust-remote-code",
-            "--device", "cuda",
             "--gpu-memory-utilization", str(model.config.gpu_memory_utilization),
             "--max-model-len", str(model.config.max_model_len),
             "--tensor-parallel-size", str(model.config.tensor_parallel_size),
@@ -279,22 +288,42 @@ class ModelManager:
         ]
 
         try:
+            # Get the directory where this script is located
+            script_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+            
             process = subprocess.Popen(
                 cmd,
                 stdout=subprocess.DEVNULL,
-                stderr=subprocess.DEVNULL,
-                cwd="/home/ubuntu/apps/vllm",
-                env={**os.environ, "CUDA_VISIBLE_DEVICES": "0"}
+                stderr=subprocess.PIPE,
+                cwd=script_dir,
+                env={**os.environ, "CUDA_VISIBLE_DEVICES": "0"},
+                text=True
             )
             
             model.pid = process.pid
             model.start_time = datetime.now()
             
             # Wait for health check
-            for _ in range(30):  # 60 seconds timeout
+            for attempt in range(30):  # 60 seconds timeout
                 if self._check_model_health(model):
                     model.status = ModelStatus.RUNNING
                     return True, f"Model {name} started successfully on port {model.config.port}"
+                
+                # Check if process is still running
+                if process.poll() is not None:
+                    # Process has died, get the error output
+                    _, stderr = process.communicate()
+                    model.status = ModelStatus.ERROR
+                    model.pid = None
+                    
+                    # Check for common errors and provide helpful messages
+                    if "gated repo" in stderr or "restricted" in stderr or "authenticated" in stderr:
+                        return False, ("Model requires Hugging Face authentication. Run: "
+                                     "huggingface-cli login --token <your_token>")
+                    elif "unrecognized arguments" in stderr:
+                        return False, f"vLLM version incompatibility: {stderr[-200:]}"
+                    else:
+                        return False, f"Model failed to start: {stderr[-300:] if stderr else 'Unknown error'}"
                 time.sleep(2)
             
             # Timeout
@@ -396,8 +425,8 @@ class ModelManager:
         
         return False
 
-    def aggressive_gpu_cleanup(self, preserve_priority: int = 1) -> Tuple[bool, str]:
-        """Aggressively clean up GPU VRAM by killing processes"""
+    def aggressive_gpu_cleanup(self, preserve_priority: int = 0) -> Tuple[bool, str]:
+        """Aggressively clean up GPU VRAM by killing ALL processes with sudo"""
         try:
             initial_gpu_info = self.system_monitor.get_gpu_info()
             if not initial_gpu_info:
@@ -412,14 +441,14 @@ class ModelManager:
             killed_count = 0
             freed_memory = 0.0
             
-            # Sort processes by priority (kill lowest priority first)
-            processes_to_kill = [p for p in initial_processes if p.priority > preserve_priority]
+            # Kill ALL GPU processes (no priority filtering for server environments)
+            processes_to_kill = initial_processes
             processes_to_kill.sort(key=lambda p: p.priority, reverse=True)
             
             for process in processes_to_kill:
                 try:
                     memory_before = process.gpu_memory_mb
-                    if self.system_monitor.kill_process(process.pid):
+                    if self.system_monitor.kill_process(process.pid, use_sudo=True):
                         killed_count += 1
                         freed_memory += memory_before
                         time.sleep(1)  # Give process time to die
@@ -447,27 +476,27 @@ class ModelManager:
             return False, f"Cleanup failed: {str(e)}"
 
     def force_gpu_cleanup(self) -> Tuple[bool, str]:
-        """Force cleanup: Kill ALL GPU processes except priority 1"""
+        """Force cleanup: Kill ALL GPU processes with sudo (no exceptions)"""
         try:
             processes = self.system_monitor.get_gpu_processes()
             if not processes:
                 return True, "No GPU processes found"
             
-            # Kill everything except highest priority
-            high_priority_processes = [p for p in processes if p.priority == 1]
-            processes_to_kill = [p for p in processes if p.priority > 1]
+            # Kill ALL GPU processes (no exceptions for server environments)
+            processes_to_kill = processes
             
             if not processes_to_kill:
-                return True, f"Only {len(high_priority_processes)} high-priority processes running"
+                return True, "No GPU processes found to kill"
             
             killed_count = 0
             total_memory = sum(p.gpu_memory_mb for p in processes_to_kill)
             
-            print("🚨 FORCE GPU CLEANUP - KILLING ALL NON-CRITICAL PROCESSES")
+            print("🚨 FORCE GPU CLEANUP - KILLING ALL GPU PROCESSES (INCLUDING DESKTOP/DISPLAY)")
+            print("⚠️  WARNING: This will stop ALL GPU processes - desktop may freeze!")
             
             for process in processes_to_kill:
                 try:
-                    if self.system_monitor.kill_process(process.pid):
+                    if self.system_monitor.kill_process(process.pid, use_sudo=True):
                         killed_count += 1
                         print(f"💥 Killed PID {process.pid} ({process.name}) - {process.gpu_memory_mb:.0f}MB")
                 except Exception as e:
@@ -691,15 +720,14 @@ class TerminalUI:
             "  r                 - Refresh all model statuses",
             "",
             "GPU MEMORY CLEANUP:",
-            "  c                 - Clean GPU memory (kills priority 2-5 processes)",
-            "  C (Shift+C)       - FORCE cleanup (kills ALL except priority 1)",
+            "  c                 - Clean GPU memory (kills ALL GPU processes with sudo)",
+            "  C (Shift+C)       - NUCLEAR cleanup (kills EVERYTHING - may freeze desktop)",
             "",
-            "PRIORITY SYSTEM:",
-            "  Priority 1        - Critical (never killed by cleanup)",
-            "  Priority 2        - High importance",
-            "  Priority 3        - Normal (default)",
-            "  Priority 4        - Low importance", 
-            "  Priority 5        - Disposable (killed first)",
+            "SERVER MODE WARNING:",
+            "  This tool is designed for headless Linux servers",
+            "  Cleanup commands kill ALL GPU processes (no priority filtering)",
+            "  Desktop users: cleanup may freeze your system!",
+            "  Use priority settings for model organization only",
             "",
             "COMMAND LINE INTERFACE:",
             "  ./vllm add <name> <model_id> --port <port>",

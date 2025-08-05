@@ -1,6 +1,17 @@
 # VLLM Manager Bash Completion
 # Source this file before using the vllm command: source .completion
 
+# Get the directory where this script is located
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+# Source the .env file if it exists
+if [[ -f "$SCRIPT_DIR/.env" ]]; then
+    set -a  # Export all variables
+    source "$SCRIPT_DIR/.env"
+    set +a  # Stop exporting
+    echo "✅ Environment variables loaded from .env"
+fi
+
 _vllm_completion() {
     local cur prev opts
     COMPREPLY=()
