@@ -1,0 +1,63 @@
+#!/bin/bash
+# VLLM Manager - THE ONLY WAY TO RUN EVERYTHING
+
+cd "$(dirname "$0")"
+source .venv/bin/activate
+
+# Check if first argument is a CLI command
+CLI_COMMANDS="add list start stop remove status cleanup force"
+
+if [[ " $CLI_COMMANDS " =~ " $1 " ]]; then
+    # Direct CLI command
+    python bin/vllm_cli.py "$@"
+else
+    case "$1" in
+        ""|"ui"|"manager")
+            echo "🚀 VLLM Multi-Model Terminal Manager"
+            echo "======================================"
+            echo
+            echo "Features:"
+            echo "  • Real-time GPU monitoring with temperature"
+            echo "  • Multi-model concurrent management"
+            echo "  • Priority-based resource allocation"
+            echo "  • Interactive terminal dashboard"
+            echo "  • Automatic process cleanup"
+            echo
+            echo "Controls:"
+            echo "  ↑/↓ - Navigate models"
+            echo "  ENTER - Start/Stop selected model"
+            echo "  a - Add new model | d - Delete model | k - Kill process"
+            echo "  c - GPU cleanup | C - Force cleanup | r - Refresh"
+            echo "  h - Help screen | q - Quit"
+            echo
+            echo "Press any key to start..."
+            read -n 1
+            python src/vllm_terminal_manager.py
+            ;;
+        *)
+            echo "VLLM Multi-Model Manager - THE ONLY COMMAND YOU NEED"
+            echo "Usage: $0 [command] [args...]"
+            echo ""
+            echo "Commands:"
+            echo "  (none)        Launch terminal UI (default)"
+            echo "  add           Add a new model configuration"
+            echo "  list          List all configured models"
+            echo "  start         Start a model server"
+            echo "  stop          Stop a model server"
+            echo "  remove        Remove a model configuration"
+            echo "  status        Show system and model status"
+            echo "  cleanup       Clean up GPU memory"
+            echo "  force         Force GPU cleanup (DANGEROUS)"
+            echo ""
+            echo "Examples:"
+            echo "  $0                                              # Launch terminal UI"
+            echo "  $0 add llama-3.1-8b meta-llama/Llama-3.1-8B-Instruct --port 9798"
+            echo "  $0 start llama-3.1-8b"
+            echo "  $0 list"
+            echo "  $0 status"
+            echo "  $0 cleanup"
+            echo ""
+            echo "Use '$0 <command> --help' for detailed help on any command"
+            ;;
+    esac
+fi
