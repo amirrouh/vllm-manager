@@ -1,105 +1,47 @@
-#!/bin/bash
-# VLLM Manager Bash Completion - UPDATED FOR DIRECT COMMANDS
-# Note: You need a SPACE after ./vllm before pressing TAB
+# VLLM Manager Bash Completion
+# Source this file before using the vllm command: source .completion
 
 _vllm_completion() {
-    local cur prev commands
+    local cur prev opts
     COMPREPLY=()
     cur="${COMP_WORDS[COMP_CWORD]}"
     prev="${COMP_WORDS[COMP_CWORD-1]}"
     
-    # All available commands (UI commands + CLI commands)
-    commands="ui manager add list start stop remove status cleanup force"
+    opts="add list start stop remove status cleanup force ui manager"
     
-    case ${COMP_CWORD} in
-        1)
-            # ./vllm [TAB] - show all commands
-            COMPREPLY=($(compgen -W "${commands}" -- ${cur}))
-            return 0
-            ;;
-        2)
-            # ./vllm add [TAB] - show model name placeholder
-            if [[ ${prev} == "add" ]]; then
-                COMPREPLY=("model-name")
-            elif [[ ${prev} =~ ^(start|stop|remove)$ ]]; then
-                # Get configured models if available
+    if [[ ${cur} == -* ]] ; then
+        case "${prev}" in
+            add)
+                COMPREPLY=( $(compgen -W "--port --priority --gpu-memory --max-len --tensor-parallel" -- ${cur}) )
+                return 0
+                ;;
+            *)
+                ;;
+        esac
+    else
+        case "${prev}" in
+            vllm|./vllm)
+                COMPREPLY=( $(compgen -W "${opts}" -- ${cur}) )
+                return 0
+                ;;
+            start|stop|remove)
+                # Get model names from config if it exists
                 if [[ -f "models_config.json" ]]; then
-                    local models=$(python -c "import json; data=json.load(open('models_config.json')); print(' '.join([m['name'] for m in data.get('models', [])]))" 2>/dev/null)
-                    COMPREPLY=($(compgen -W "${models}" -- ${cur}))
+                    local models=$(python3 -c "import json; print(' '.join([m['name'] for m in json.load(open('models_config.json', 'r'))]))" 2>/dev/null || echo "")
+                    COMPREPLY=( $(compgen -W "${models}" -- ${cur}) )
                 fi
-            fi
-            return 0
-            ;;
-        3)
-            # ./vllm add model-name [TAB] - show popular HuggingFace models
-            if [[ ${COMP_WORDS[1]} == "add" ]]; then
-                local popular_models="meta-llama/Llama-3.1-8B-Instruct mistralai/Mistral-7B-Instruct-v0.2 codellama/CodeLlama-7b-Instruct-hf microsoft/DialoGPT-medium"
-                COMPREPLY=($(compgen -W "${popular_models}" -- ${cur}))
-            fi
-            return 0
-            ;;
-        *)
-            # Handle --options for add command
-            if [[ ${COMP_WORDS[1]} == "add" ]]; then
-                case ${prev} in
-                    --port)
-                        COMPREPLY=($(compgen -W "8001 8002 8003 9798 9799" -- ${cur}))
-                        ;;
-                    --priority)
-                        COMPREPLY=($(compgen -W "1 2 3 4 5" -- ${cur}))
-                        ;;
-                    --gpu-memory)
-                        COMPREPLY=($(compgen -W "0.1 0.2 0.3 0.4 0.5" -- ${cur}))
-                        ;;
-                    --max-len)
-                        COMPREPLY=($(compgen -W "1024 2048 4096 8192" -- ${cur}))
-                        ;;
-                    --tensor-parallel)
-                        COMPREPLY=($(compgen -W "1 2 4 8" -- ${cur}))
-                        ;;
-                    *)
-                        COMPREPLY=($(compgen -W "--port --priority --gpu-memory --max-len --tensor-parallel" -- ${cur}))
-                        ;;
-                esac
-            elif [[ ${COMP_WORDS[1]} == "cleanup" ]]; then
-                case ${prev} in
-                    --preserve-priority)
-                        COMPREPLY=($(compgen -W "1 2 3 4 5" -- ${cur}))
-                        ;;
-                    *)
-                        COMPREPLY=($(compgen -W "--preserve-priority" -- ${cur}))
-                        ;;
-                esac
-            fi
-            return 0
-            ;;
-    esac
+                return 0
+                ;;
+            *)
+                ;;
+        esac
+    fi
+    
+    COMPREPLY=( $(compgen -W "${opts}" -- ${cur}) )
 }
 
-# Remove existing completions
-complete -r ./vllm 2>/dev/null
-complete -r vllm 2>/dev/null
-
-# Register completion
-complete -F _vllm_completion ./vllm
 complete -F _vllm_completion vllm
+complete -F _vllm_completion ./vllm
 
-# Help function
-_vllm_show_help() {
-    echo "VLLM Manager Commands:"
-    echo "  ./vllm          - Launch terminal UI (default)"
-    echo "  ./vllm add      - Add new model configuration"
-    echo "  ./vllm list     - List all configured models"
-    echo "  ./vllm start    - Start a model server"
-    echo "  ./vllm stop     - Stop a model server"
-    echo "  ./vllm remove   - Remove model configuration"
-    echo "  ./vllm status   - Show system status"
-    echo "  ./vllm cleanup  - Clean up GPU memory"
-    echo "  ./vllm force    - Force GPU cleanup"
-}
-
-alias vllm-help='_vllm_show_help'
-export -f _vllm_completion _vllm_show_help
-
-echo "✅ VLLM tab completion loaded! (legacy/test removed, direct CLI commands enabled)"
-echo "💡 Remember: ./vllm [SPACE][TAB] (space required before TAB)"
+echo "💡 VLLM Manager bash completion loaded!"
+echo "   Use tab completion with: ./vllm <tab>"

@@ -2,7 +2,36 @@
 # VLLM Manager - THE ONLY WAY TO RUN EVERYTHING
 
 cd "$(dirname "$0")"
+
+# Check if virtual environment exists
+if [[ ! -d ".venv" ]]; then
+    echo "❌ Virtual environment not found!"
+    echo "Please run the installation script first:"
+    echo "  chmod +x install.sh"
+    echo "  ./install.sh"
+    echo ""
+    echo "Then source the completion script:"
+    echo "  source .completion"
+    exit 1
+fi
+
+# Check if virtual environment is properly set up
+if [[ ! -f ".venv/bin/activate" ]]; then
+    echo "❌ Virtual environment is corrupted!"
+    echo "Please reinstall by running:"
+    echo "  ./install.sh"
+    exit 1
+fi
+
 source .venv/bin/activate
+
+# Check if Python is available in the virtual environment
+if ! command -v python &> /dev/null; then
+    echo "❌ Python not found in virtual environment!"
+    echo "Please reinstall by running:"
+    echo "  ./install.sh"
+    exit 1
+fi
 
 # Check if first argument is a CLI command
 CLI_COMMANDS="add list start stop remove status cleanup force"
