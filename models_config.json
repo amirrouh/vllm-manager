@@ -1,12 +1,12 @@
 {
   "models": [
     {
-      "name": "mistral-7b",
-      "huggingface_id": "mistralai/Mistral-7B-Instruct-v0.2",
+      "name": "qwen2.5-7b",
+      "huggingface_id": "Qwen/Qwen2.5-7B-Instruct",
       "port": 8001,
       "priority": 3,
-      "gpu_memory_utilization": 0.8,
-      "max_model_len": 1024,
+      "gpu_memory_utilization": 0.3,
+      "max_model_len": 2048,
       "tensor_parallel_size": 1
     }
   ]

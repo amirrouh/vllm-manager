@@ -301,12 +301,49 @@ class ModelManager:
 
         try:
             
+            # Ensure HF_TOKEN is available for the subprocess
+            env = {**os.environ, "CUDA_VISIBLE_DEVICES": "0"}
+
+            # For Qwen2.5 models, we need to increase GPU memory utilization
+            # Update the model config to use higher GPU memory
+            if "qwen2.5" in model.config.huggingface_id.lower():
+                model.config.gpu_memory_utilization = 0.8
+                print("📊 Increased GPU memory utilization to 80% for Qwen2.5 model")
+                # Update the command with new GPU memory utilization
+                cmd = [
+                    venv_python, "-m", "vllm.entrypoints.openai.api_server",
+                    "--model", model.config.huggingface_id,
+                    "--host", "0.0.0.0",
+                    "--port", str(model.config.port),
+                    "--trust-remote-code",
+                    "--gpu-memory-utilization", str(model.config.gpu_memory_utilization),
+                    "--max-model-len", str(model.config.max_model_len),
+                    "--tensor-parallel-size", str(model.config.tensor_parallel_size),
+                    "--enforce-eager",
+                    "--disable-log-requests"
+                ]
+
+            # Get the valid token from huggingface cache file
+            hf_token = None
+            try:
+                token_file = os.path.expanduser("~/.cache/huggingface/token")
+                if os.path.exists(token_file):
+                    with open(token_file, 'r') as f:
+                        hf_token = f.read().strip()
+                    if hf_token:
+                        env["HF_TOKEN"] = hf_token
+            except Exception:
+                # Fallback to environment variables
+                hf_token = os.environ.get("HF_TOKEN")
+                if hf_token:
+                    env["HF_TOKEN"] = hf_token
+
             process = subprocess.Popen(
                 cmd,
                 stdout=subprocess.DEVNULL,
                 stderr=subprocess.PIPE,
                 cwd=script_dir,
-                env={**os.environ, "CUDA_VISIBLE_DEVICES": "0"},
+                env=env,
                 text=True
             )
             
