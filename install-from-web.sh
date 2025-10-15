@@ -14,18 +14,13 @@ BOLD='\033[1m'
 NC='\033[0m' # No Color
 
 # Installation paths
-INSTALL_DIR="/opt/vllm-manager"
-BIN_DIR="/usr/local/bin"
+INSTALL_DIR="$HOME/.vllm-manager"
+BIN_DIR="$HOME/.local/bin"
 CONFIG_DIR="$HOME/.vllm-manager"
 REPO_URL="https://github.com/amirrouh/vllm-manager"
 
-# Fancy banner
-echo -e "${BLUE}${BOLD}"
-echo "╔══════════════════════════════════════════════════════════════════════════════╗"
-echo "║                         🚀 VLLM Manager Installer                         ║"
-echo "║                  Single-Command Installation from Web                     ║"
-echo "╚══════════════════════════════════════════════════════════════════════════════╝"
-echo -e "${NC}"
+echo -e "${BLUE}${BOLD}VLLM Manager Installer${NC}"
+echo -e "${BLUE}Single-Command Installation from Web${NC}"
 
 # Check if running as root
 if [[ $EUID -eq 0 ]]; then
@@ -86,10 +81,9 @@ print_success "✓ System dependencies installed"
 
 # Create directories
 print_step "Creating installation directories..."
-sudo mkdir -p "$INSTALL_DIR"
-sudo mkdir -p "$CONFIG_DIR"
-sudo mkdir -p "$CONFIG_DIR/logs"
-sudo chown -R $USER:$USER "$CONFIG_DIR"
+mkdir -p "$INSTALL_DIR"
+mkdir -p "$CONFIG_DIR"
+mkdir -p "$CONFIG_DIR/logs"
 print_success "✓ Directories created"
 
 # Clone or download the repository
@@ -106,25 +100,41 @@ fi
 
 # Copy files to installation directory
 print_step "Installing files..."
-sudo cp -r * "$INSTALL_DIR/"
+echo -ne "${YELLOW}Installing files...${NC}"
+for i in {1..5}; do
+    echo -ne "."
+    sleep 0.3
+done
+echo ""
+
+mkdir -p "$INSTALL_DIR"
+cp -r * "$INSTALL_DIR/"
 cd "$INSTALL_DIR"
 print_success "✓ Files installed"
 
 # Setup uv environment
 print_step "Setting up uv environment..."
+echo -ne "${YELLOW}Setting up uv environment...${NC}"
+for i in {1..8}; do
+    echo -ne "."
+    sleep 0.3
+done
+echo ""
+
 uv init --app
 uv add python>=3.8
 uv add -r requirements.txt
 uv add vllm  # This will install vllm in the uv environment
 print_success "✓ uv environment configured"
 
-# Create system-wide vm command
+# Create user vm command
 print_step "Creating vm command..."
-sudo tee "$BIN_DIR/vm" > /dev/null << 'EOF'
+mkdir -p "$BIN_DIR"
+tee "$BIN_DIR/vm" > /dev/null << 'EOF'
 #!/bin/bash
-# VLLM Manager system-wide wrapper
+# VLLM Manager user wrapper
 
-INSTALL_DIR="/opt/vllm-manager"
+INSTALL_DIR="$HOME/.vllm-manager"
 CONFIG_DIR="$HOME/.vllm-manager"
 
 # Ensure config directory exists
@@ -164,12 +174,13 @@ fi
 exec uv run python vllm_manager.py "$@"
 EOF
 
-sudo chmod +x "$BIN_DIR/vm"
-print_success "✓ vm command installed globally"
+chmod +x "$BIN_DIR/vm"
+print_success "✓ vm command installed for user"
 
 # Setup auto-completion
 print_step "Setting up bash completion..."
-sudo tee /etc/bash_completion.d/vm > /dev/null << 'EOF'
+mkdir -p "$HOME/.bash_completion.d"
+tee "$HOME/.bash_completion.d/vm" > /dev/null << 'EOF'
 _vm_completion() {
     local cur prev words cword
     _init_completion || return
@@ -192,6 +203,11 @@ _vm_completion() {
 
 complete -F _vm_completion vm
 EOF
+
+# Add to bashrc if not already there
+if ! grep -q "source.*bash_completion.d/vm" "$HOME/.bashrc"; then
+    echo 'source ~/.bash_completion.d/vm' >> "$HOME/.bashrc"
+fi
 print_success "✓ Bash completion installed"
 
 # Final verification
@@ -207,33 +223,14 @@ rm -rf /tmp/vllm-manager
 
 # Final success message
 echo ""
-echo -e "${GREEN}${BOLD}"
-echo "╔══════════════════════════════════════════════════════════════════════════════╗"
-echo "║                          🎉 Installation Complete!                         ║"
-echo "╚══════════════════════════════════════════════════════════════════════════════╝"
-echo -e "${NC}"
+echo -e "${GREEN}${BOLD}🎉 Installation Complete!${NC}"
 echo ""
-echo -e "${BOLD}You can now use VLLM Manager from anywhere:${NC}"
+echo -e "${BOLD}You can now use VLLM Manager:${NC}"
 echo ""
-echo -e "  ${BLUE}vm gui${NC}         - Launch the beautiful terminal interface"
-echo -e "  ${BLUE}vm help${NC}        - Show all available commands"
-echo -e "  ${BLUE}vm status${NC}      - Check system status"
+echo -e "  ${BLUE}vm gui${NC}         - Launch the interface"
+echo -e "  ${BLUE}vm help${NC}        - Show commands"
 echo ""
-echo -e "${BOLD}What makes this special:${NC}"
-echo -e "  🚀 ${GREEN}Zero setup${NC} - Everything is installed automatically"
-echo -e "  📦 ${GREEN}uv-powered${NC} - Fast, modern Python package management"
-echo -e "  🌍 ${GREEN}Global access${NC} - Use 'vm' from any directory"
-echo -e "  🔄 ${GREEN}Self-contained${NC} - vLLM installs automatically on first run"
-echo ""
-echo -e "${BOLD}Configuration:${NC}"
-echo "  Config directory: $CONFIG_DIR"
-echo "  Installation: $INSTALL_DIR"
-echo ""
-echo -e "${YELLOW}💡 Pro tips:${NC}"
-echo "  • Your first run will automatically install vLLM using uv"
-echo "  • Use 'vm gui' to launch the interface anytime"
-echo "  • Tab completion is available for commands"
-echo ""
+echo -e "${YELLOW}💡 Make sure $HOME/.local/bin is in your PATH${NC}"
 echo -e "${BOLD}🚀 Ready to run LLMs? Try: ${BLUE}vm gui${NC}"
 echo ""
 
