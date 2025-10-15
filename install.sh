@@ -177,14 +177,66 @@ if [[ "\$1" == "help" ]] || [[ "\$1" == "--help" ]] || [[ -z "\$1" ]]; then
     echo "  remove <name>       Remove a model"
     echo "  status              Show system status"
     echo "  cleanup             Clean GPU memory"
+    echo "  uninstall           Uninstall VLLM Manager"
     echo "  help                Show this help"
     echo ""
     echo "Examples:"
     echo "  vm gui              Launch interface"
     echo "  vm add mistral mistralai/Mistral-7B-Instruct-v0.2"
     echo "  vm start mistral"
+    echo "  vm uninstall        Remove VLLM Manager"
     echo ""
     echo "Configuration directory: \$CONFIG_DIR"
+    exit 0
+fi
+
+# Handle uninstall command
+if [[ "\$1" == "uninstall" ]]; then
+    echo "🔥 VLLM Manager Uninstaller"
+    echo "================================="
+    echo ""
+    echo "This will completely remove VLLM Manager from your system."
+    echo ""
+    read -p "Are you sure you want to uninstall? [y/N] " -n 1 -r
+    echo
+    if [[ ! \$REPLY =~ ^[Yy]$ ]]; then
+        echo "Uninstall cancelled."
+        exit 0
+    fi
+
+    read -p "Also remove user data (models, logs, config)? [y/N] " -n 1 -r
+    echo
+    if [[ \$REPLY =~ ^[Yy]$ ]]; then
+        REMOVE_DATA=true
+    else
+        REMOVE_DATA=false
+    fi
+
+    echo "Uninstalling VLLM Manager..."
+
+    # Stop processes
+    pkill -f "vllm_manager.py" 2>/dev/null || true
+    pkill -f "vllm entrypoints" 2>/dev/null || true
+
+    # Remove files
+    sudo rm -rf "$INSTALL_DIR"
+    sudo rm -f "$BIN_DIR/vm"
+    sudo rm -f "/etc/bash_completion.d/vm"
+    sudo rm -f "/usr/share/applications/vllm-manager.desktop"
+    sudo rm -f "/usr/local/share/man/man1/vm.1.gz"
+
+    if [[ "$REMOVE_DATA" = true ]]; then
+        rm -rf "$CONFIG_DIR"
+    fi
+
+    echo ""
+    echo "✅ VLLM Manager has been uninstalled!"
+
+    if [[ "$REMOVE_DATA" = false ]]; then
+        echo "User data preserved in: $CONFIG_DIR"
+    fi
+
+    echo "You may need to restart your terminal."
     exit 0
 fi
 
@@ -292,7 +344,7 @@ _vm_completion() {
 
     case "${prev}" in
         vm)
-            COMPREPLY=( $(compgen -W "gui add list start stop remove status cleanup help" -- "${cur}") )
+            COMPREPLY=( $(compgen -W "gui add list start stop remove status cleanup uninstall help" -- "${cur}") )
             return 0
             ;;
         add)

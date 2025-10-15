@@ -48,6 +48,45 @@ cd vllm-manager
 ./install.sh
 ```
 
+## 🔧 Uninstalling VLLM Manager
+
+### **The Easiest Way - Built-in Uninstall**
+
+```bash
+vm uninstall
+```
+
+**That's it!** The `vm` command includes its own uninstaller. Just type `vm uninstall` and follow the prompts.
+
+### **What uninstallation removes:**
+- ✅ Installation directory (`/opt/vllm-manager`)
+- ✅ Global `vm` command from `/usr/local/bin`
+- ✅ Bash completion files
+- ✅ Desktop entries
+- ✅ Man pages
+- ✅ System services
+- 🤔 User data (optional - you'll be asked)
+
+### **Other Ways to Uninstall:**
+
+```bash
+# If you can access the vm command:
+vm uninstall
+
+# If vm command is broken, use the web uninstaller:
+curl -fsSL https://raw.githubusercontent.com/amirrouh/vllm-manager/main/uninstall-from-web.sh | bash
+
+# Manual uninstall (last resort):
+sudo rm -rf /opt/vllm-manager
+sudo rm -f /usr/local/bin/vm
+rm -rf ~/.vllm-manager
+```
+
+### **After uninstallation:**
+- The `vm` command will no longer be available
+- You may need to restart your terminal for shell completion to update
+- Your models and logs will be preserved unless you choose to remove them
+
 ## 🎮 How to Use
 
 ### **First Run Magic**
