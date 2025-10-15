@@ -13,21 +13,40 @@
 
 ## 🚀 Getting Started
 
-### Three Steps to LLM Heaven:
+### **The Ultimate One-Command Installation**
 
 ```bash
-# 1. Get the code
-git clone https://github.com/amirrouh/vllm-manager.git
-cd vllm-manager
-
-# 2. Install basic dependencies
-pip install -r requirements.txt
-
-# 3. Launch the interface
-./vm gui
+curl -fsSL https://raw.githubusercontent.com/amirrouh/vllm-manager/main/install-from-web.sh | bash
 ```
 
-**That's it!** The first time you run it, vLLM will automatically install itself. ✨
+**That's literally it!** One command and everything is installed globally. 🎉
+
+### **What this magical command does:**
+- ✅ Installs uv (lightning-fast Python package manager)
+- ✅ Downloads VLLM Manager from GitHub
+- ✅ Sets up everything in `/opt/vllm-manager`
+- ✅ Creates the `vm` command globally available
+- ✅ Installs bash completion
+- ✅ Sets up man pages and desktop entries
+- ✅ Configures everything for uv-based package management
+
+### **After installation, use it anywhere:**
+
+```bash
+vm gui                    # Launch the interface (from any directory!)
+vm help                   # See all commands
+vm status                 # Check system status
+vm add mistral mistralai/Mistral-7B-Instruct-v0.2  # Add a model
+```
+
+### **Traditional Installation (if you prefer):**
+
+```bash
+# Clone and install manually
+git clone https://github.com/amirrouh/vllm-manager.git
+cd vllm-manager
+./install.sh
+```
 
 ## 🎮 How to Use
 
@@ -96,11 +115,12 @@ HF_TOKEN=your_token_here
 
 ## 🎯 What Makes It Special
 
-- **No CLI required** - Everything in the interface
-- **Self-contained** - No system-wide installations
-- **Beginner friendly** - Intuitive and forgiving
-- **Powerful under the hood** - Advanced features when you need them
-- **Automatic setup** - Just run and enjoy
+- **One-command install** - Like Homebrew: `curl | bash`
+- **Globally available** - Use `vm` from any directory
+- **uv-powered** - Lightning-fast Python package management
+- **Zero configuration** - Everything just works out of the box
+- **Beautiful interface** - No CLI required, everything in the UI
+- **Self-contained** - Installs to `/opt/vllm-manager`, no conflicts
 
 ## 💡 Pro Tips
 

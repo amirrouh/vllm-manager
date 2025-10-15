@@ -1,7 +1,7 @@
 #!/bin/bash
 
-# VLLM Manager Installer
-# Single-command system-wide installation like Homebrew
+# VLLM Manager Web Installer
+# This script is meant to be hosted and downloaded with curl
 
 set -e
 
@@ -23,7 +23,7 @@ REPO_URL="https://github.com/amirrouh/vllm-manager"
 echo -e "${BLUE}${BOLD}"
 echo "╔══════════════════════════════════════════════════════════════════════════════╗"
 echo "║                         🚀 VLLM Manager Installer                         ║"
-echo "║                   Single-Command Installation like Homebrew                ║"
+echo "║                  Single-Command Installation from Web                     ║"
 echo "╚══════════════════════════════════════════════════════════════════════════════╝"
 echo -e "${NC}"
 
@@ -118,52 +118,24 @@ uv add -r requirements.txt
 uv add vllm  # This will install vllm in the uv environment
 print_success "✓ uv environment configured"
 
-# Update the main script to use uv
-print_step "Configuring VLLM Manager for uv..."
-cat > vllm_manager_uv.py << 'EOF'
-#!/usr/bin/env python3
-"""
-VLLM Manager - Modern Terminal Interface
-uv-enabled version
-"""
-
-import subprocess
-import sys
-from pathlib import Path
-
-def run_with_uv():
-    """Run vllm_manager.py using uv"""
-    install_dir = Path(__file__).parent
-    cmd = ['uv', 'run', 'python', 'vllm_manager.py'] + sys.argv[1:]
-
-    # Handle the gui command specially
-    if len(sys.argv) <= 1 or sys.argv[1] == 'gui':
-        cmd = ['uv', 'run', 'python', 'vllm_manager.py', 'gui']
-
-    os.execvp('uv', cmd)
-
-if __name__ == "__main__":
-    run_with_uv()
-EOF
-
 # Create system-wide vm command
 print_step "Creating vm command..."
-sudo tee "$BIN_DIR/vm" > /dev/null << EOF
+sudo tee "$BIN_DIR/vm" > /dev/null << 'EOF'
 #!/bin/bash
 # VLLM Manager system-wide wrapper
 
 INSTALL_DIR="/opt/vllm-manager"
-CONFIG_DIR="\$HOME/.vllm-manager"
+CONFIG_DIR="$HOME/.vllm-manager"
 
 # Ensure config directory exists
-mkdir -p "\$CONFIG_DIR"
-mkdir -p "\$CONFIG_DIR/logs"
+mkdir -p "$CONFIG_DIR"
+mkdir -p "$CONFIG_DIR/logs"
 
 # Change to installation directory
-cd "\$INSTALL_DIR"
+cd "$INSTALL_DIR"
 
 # Handle special commands
-if [[ "\$1" == "help" ]] || [[ "\$1" == "--help" ]] || [[ -z "\$1" ]]; then
+if [[ "$1" == "help" ]] || [[ "$1" == "--help" ]] || [[ -z "$1" ]]; then
     echo "🚀 VLLM Manager - Modern Terminal Interface"
     echo ""
     echo "Usage: vm [command]"
@@ -184,104 +156,16 @@ if [[ "\$1" == "help" ]] || [[ "\$1" == "--help" ]] || [[ -z "\$1" ]]; then
     echo "  vm add mistral mistralai/Mistral-7B-Instruct-v0.2"
     echo "  vm start mistral"
     echo ""
-    echo "Configuration directory: \$CONFIG_DIR"
+    echo "Configuration directory: $CONFIG_DIR"
     exit 0
 fi
 
 # Use uv to run the application
-exec uv run python vllm_manager.py "\$@"
+exec uv run python vllm_manager.py "$@"
 EOF
 
 sudo chmod +x "$BIN_DIR/vm"
 print_success "✓ vm command installed globally"
-
-# Create desktop entry for GUI
-print_step "Creating desktop entry..."
-sudo tee /usr/share/applications/vllm-manager.desktop > /dev/null << EOF
-[Desktop Entry]
-Name=VLLM Manager
-Comment=Modern terminal interface for vLLM model management
-Exec=vm gui
-Icon=terminal
-Terminal=true
-Type=Application
-Categories=Development;System;
-StartupNotify=true
-EOF
-print_success "✓ Desktop entry created"
-
-# Create man page
-print_step "Creating documentation..."
-sudo tee /usr/local/share/man/man1/vm.1 > /dev/null << 'EOF'
-.TH VM 1 "VLLM Manager" "User Commands"
-.SH NAME
-vm \- VLLM Manager - Modern Terminal Interface for vLLM Model Management
-.SH SYNOPSIS
-.B vm
-[\fIcommand\fR] [\fIoptions\fR]
-.SH DESCRIPTION
-VLLM Manager is a modern terminal-based interface for managing multiple vLLM models with real-time monitoring and intelligent resource allocation.
-.SH COMMANDS
-.TP
-\fBgui\fR
-Launch the terminal interface (default command)
-.TP
-\fBadd\fR \fIname\fR \fIhuggingface_id\fR
-Add a new model with the specified name and HuggingFace ID
-.TP
-\fBlist\fR
-List all configured models
-.TP
-\fBstart\fR \fIname\fR
-Start a model by name
-.TP
-\fBstop\fR \fIname\fR
-Stop a running model
-.TP
-\fBremove\fR \fIname\fR
-Remove a model configuration
-.TP
-\fBstatus\fR
-Show system status and GPU information
-.TP
-\fBcleanup\fR
-Clean GPU memory by stopping low-priority models
-.TP
-\fBhelp\fR
-Show this help message
-.SH EXAMPLES
-Launch the terminal interface:
-.PP
-.RS 4
-vm gui
-.RE
-.PP
-Add a Mistral model:
-.PP
-.RS 4
-vm add mistral mistralai/Mistral-7B-Instruct-v0.2
-.RE
-.PP
-Start a model:
-.PP
-.RS 4
-vm start mistral
-.RE
-.SH FILES
-.TP
-.I ~/.vllm-manager/
-Configuration directory for VLLM Manager
-.TP
-.I /opt/vllm-manager/
-Installation directory
-.SH AUTHOR
-VLLM Manager contributors
-.SH "SEE ALSO"
-The full documentation is available at: https://github.com/amirrouh/vllm-manager
-EOF
-
-sudo gzip -f /usr/local/share/man/man1/vm.1
-print_success "✓ Man page installed"
 
 # Setup auto-completion
 print_step "Setting up bash completion..."
@@ -299,7 +183,6 @@ _vm_completion() {
             return 0
             ;;
         start|stop|remove)
-            # This could be enhanced to read actual model names
             return 0
             ;;
         *)
@@ -311,32 +194,9 @@ complete -F _vm_completion vm
 EOF
 print_success "✓ Bash completion installed"
 
-# Set up systemd user service for auto-restart (optional)
-print_step "Setting up systemd user service..."
-mkdir -p "$CONFIG_DIR/systemd-user"
-tee "$CONFIG_DIR/systemd-user/vllm-manager.service" > /dev/null << EOF
-[Unit]
-Description=VLLM Manager Service
-After=network.target
-
-[Service]
-Type=simple
-ExecStart=$BIN_DIR/vm gui
-Restart=on-failure
-RestartSec=5
-Environment=HOME=$HOME
-WorkingDirectory=$INSTALL_DIR
-
-[Install]
-WantedBy=default.target
-EOF
-
-print_success "✓ Systemd service template created"
-
 # Final verification
 print_step "Verifying installation..."
 if command -v vm &> /dev/null; then
-    VM_VERSION=$(vm --version 2>/dev/null || echo "installed")
     print_success "✓ vm command is working"
 else
     print_warning "⚠ vm command not found in PATH. You may need to restart your terminal."
@@ -364,7 +224,6 @@ echo -e "  🚀 ${GREEN}Zero setup${NC} - Everything is installed automatically"
 echo -e "  📦 ${GREEN}uv-powered${NC} - Fast, modern Python package management"
 echo -e "  🌍 ${GREEN}Global access${NC} - Use 'vm' from any directory"
 echo -e "  🔄 ${GREEN}Self-contained${NC} - vLLM installs automatically on first run"
-echo -e "  📚 ${GREEN}Complete${NC} - Documentation, completion, desktop entry"
 echo ""
 echo -e "${BOLD}Configuration:${NC}"
 echo "  Config directory: $CONFIG_DIR"
@@ -374,7 +233,6 @@ echo -e "${YELLOW}💡 Pro tips:${NC}"
 echo "  • Your first run will automatically install vLLM using uv"
 echo "  • Use 'vm gui' to launch the interface anytime"
 echo "  • Tab completion is available for commands"
-echo "  • Check 'man vm' for detailed documentation"
 echo ""
 echo -e "${BOLD}🚀 Ready to run LLMs? Try: ${BLUE}vm gui${NC}"
 echo ""
