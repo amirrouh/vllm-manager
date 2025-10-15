@@ -25,6 +25,64 @@ from dotenv import load_dotenv
 load_dotenv()
 
 # =============================================================================
+# AUTO-INSTALLATION
+# =============================================================================
+
+def setup_vllm_environment():
+    """Setup vllm environment if not already installed"""
+    script_dir = Path(__file__).parent
+    venv_dir = script_dir / ".venv"
+    venv_python = venv_dir / "bin" / "python"
+
+    # Check if virtual environment exists and has vllm installed
+    if venv_dir.exists() and venv_python.exists():
+        try:
+            result = subprocess.run([str(venv_python), "-c", "import vllm; print('vllm installed')"],
+                                  capture_output=True, text=True, check=True)
+            if result.returncode == 0:
+                print("✅ vLLM environment already set up")
+                return str(venv_python)
+        except:
+            pass
+
+    print("🔧 Setting up vLLM environment for the first time...")
+    print("This may take a few minutes as vLLM needs to be installed...")
+
+    try:
+        # Create virtual environment
+        print("📦 Creating virtual environment...")
+        subprocess.run([sys.executable, "-m", "venv", str(venv_dir)], check=True)
+
+        # Install vllm in the virtual environment
+        print("⬇️  Installing vLLM (this may take 5-15 minutes)...")
+        install_cmd = [str(venv_python), "-m", "pip", "install", "vllm"]
+
+        # Run installation with real-time output
+        process = subprocess.Popen(install_cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
+
+        for line in process.stdout:
+            print(f"   {line.strip()}")
+
+        process.wait()
+
+        if process.returncode == 0:
+            print("✅ vLLM installation completed successfully!")
+            return str(venv_python)
+        else:
+            print("❌ vLLM installation failed!")
+            return None
+
+    except Exception as e:
+        print(f"❌ Error setting up vLLM environment: {e}")
+        return None
+
+# Ensure vllm environment is set up
+VLLM_PYTHON = setup_vllm_environment()
+if not VLLM_PYTHON:
+    print("❌ Failed to setup vLLM environment. Exiting.")
+    sys.exit(1)
+
+# =============================================================================
 # LOGGING CONFIGURATION
 # =============================================================================
 
@@ -328,15 +386,13 @@ class ModelManager:
         model.status = ModelStatus.STARTING
         logger.info(f"Starting model {name}...")
 
-        # Get venv python path
-        script_dir = Path(__file__).parent
-        venv_python = script_dir / ".venv" / "bin" / "python"
-
-        if not venv_python.exists():
-            return False, f"Virtual environment Python not found at {venv_python}"
+        # Use the auto-configured vllm python path
+        global VLLM_PYTHON
+        if not VLLM_PYTHON or not Path(VLLM_PYTHON).exists():
+            return False, "VLLM Python environment not found. Please run the application again."
 
         cmd = [
-            str(venv_python), "-m", "vllm.entrypoints.openai.api_server",
+            VLLM_PYTHON, "-m", "vllm.entrypoints.openai.api_server",
             "--model", model.config.huggingface_id,
             "--host", "0.0.0.0",
             "--port", str(model.config.port),

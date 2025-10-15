@@ -1,7 +1,4 @@
 # VLLM Manager Dependencies
-# Core ML and serving framework
-vllm>=0.2.0
-
 # System monitoring and process management
 psutil>=5.9.0
 
@@ -27,3 +24,5 @@ pydantic>=2.0.0
 # Development and testing (optional, uncomment if needed)
 # pytest>=7.0.0
 # pytest-asyncio>=0.21.0
+
+# Note: vLLM is auto-installed on first run in a local virtual environment
