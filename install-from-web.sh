@@ -121,17 +121,23 @@ for i in {1..8}; do
 done
 echo ""
 
-# uv init doesn't like .vllm-manager directory name, so init in a temporary directory first
-temp_dir=$(mktemp -d)
-cd "$temp_dir"
-uv init --name vllm-manager --app
-cp -r "$INSTALL_DIR"/* .
-uv add python>=3.8
-uv add -r requirements.txt
-uv add vllm  # This will install vllm in the uv environment
-cd "$INSTALL_DIR"
-cp -r "$temp_dir"/* .
-rm -rf "$temp_dir"
+# Create simple pyproject.toml instead of using uv init
+cat > pyproject.toml << 'EOF'
+[project]
+name = "vllm-manager"
+version = "0.1.0"
+description = "Zero-Setup vLLM Model Management"
+requires-python = ">=3.8"
+dependencies = [
+    "vllm",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+EOF
+
+uv add vllm
 print_success "✓ uv environment configured"
 
 # Create user vm command
