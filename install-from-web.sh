@@ -121,11 +121,17 @@ for i in {1..8}; do
 done
 echo ""
 
-# uv init doesn't like .vllm-manager directory name, so init with a clean name
+# uv init doesn't like .vllm-manager directory name, so init in a temporary directory first
+temp_dir=$(mktemp -d)
+cd "$temp_dir"
 uv init --name vllm-manager --app
+cp -r "$INSTALL_DIR"/* .
 uv add python>=3.8
 uv add -r requirements.txt
 uv add vllm  # This will install vllm in the uv environment
+cd "$INSTALL_DIR"
+cp -r "$temp_dir"/* .
+rm -rf "$temp_dir"
 print_success "✓ uv environment configured"
 
 # Create user vm command
