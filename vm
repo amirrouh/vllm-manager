@@ -1,99 +1,381 @@
-#!/bin/bash
-# VLLM Manager - THE ONLY WAY TO RUN EVERYTHING
+#!/usr/bin/env python3
+"""
+VLLM Manager CLI - Single File Installer
+Modern terminal-based vLLM model management system
+"""
 
-cd "$(dirname "$0")"
+import argparse
+import json
+import os
+import signal
+import sys
+import subprocess
+import shutil
+from pathlib import Path
+from typing import Dict, List, Optional
 
-# Check if virtual environment exists
-if [[ ! -d ".venv" ]]; then
-    echo "❌ Virtual environment not found!"
-    echo "Please run the installation script first:"
-    echo "  chmod +x install.sh"
-    echo "  ./install.sh"
-    echo ""
-    echo "Then source the completion script:"
-    echo "  source .completion"
-    exit 1
-fi
+# Add current directory to path for imports
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-# Check if virtual environment is properly set up
-if [[ ! -f ".venv/bin/activate" ]]; then
-    echo "❌ Virtual environment is corrupted!"
-    echo "Please reinstall by running:"
-    echo "  ./install.sh"
-    exit 1
-fi
+try:
+    from vllm_manager import ModelManager, ModelConfig, ModelStatus
+    from dotenv import load_dotenv
+except ImportError:
+    print("❌ Missing dependencies. Please install required packages.")
+    print("Run: pip install python-dotenv psutil httpx")
+    sys.exit(1)
 
-source .venv/bin/activate
+load_dotenv()
 
-# Check if Python is available in the virtual environment
-if ! command -v python &> /dev/null; then
-    echo "❌ Python not found in virtual environment!"
-    echo "Please reinstall by running:"
-    echo "  ./install.sh"
-    exit 1
-fi
+class VLLMCLI:
+    def __init__(self):
+        self.manager = ModelManager()
 
-# Source .env file if it exists
-if [[ -f ".env" ]]; then
-    set -a  # Export all variables
-    source .env
-    set +a  # Stop exporting
-fi
+    def add_model(self, args) -> int:
+        """Add a new model"""
+        config = ModelConfig(
+            name=args.name,
+            huggingface_id=args.model_id,
+            port=args.port,
+            priority=args.priority,
+            gpu_memory_utilization=args.gpu_memory,
+            max_model_len=args.max_len,
+            tensor_parallel_size=args.tensor_parallel
+        )
 
-# Check if first argument is a CLI command
-CLI_COMMANDS="add list start stop remove status cleanup force"
+        if self.manager.add_model(config):
+            print(f"✅ Model '{args.name}' added successfully")
+            print(f"   🤖 HuggingFace ID: {args.model_id}")
+            print(f"   🔌 Port: {args.port}")
+            print(f"   🎯 Priority: {args.priority}")
+            print(f"   🎮 GPU Memory: {args.gpu_memory}")
+            return 0
+        else:
+            print(f"❌ Model '{args.name}' already exists")
+            return 1
 
-if [[ " $CLI_COMMANDS " =~ " $1 " ]]; then
-    # Direct CLI command
-    python bin/vllm_cli.py "$@"
-else
-    case "$1" in
-        ""|"ui"|"manager")
-            echo "🚀 VLLM Multi-Model Terminal Manager"
-            echo "======================================"
-            echo
-            echo "Features:"
-            echo "  • Real-time GPU monitoring with temperature"
-            echo "  • Multi-model concurrent management"
-            echo "  • Priority-based resource allocation"
-            echo "  • Interactive terminal dashboard"
-            echo "  • Automatic process cleanup"
-            echo
-            echo "Controls:"
-            echo "  ↑/↓ - Navigate models"
-            echo "  ENTER - Start/Stop selected model"
-            echo "  a - Add new model | d - Delete model | k - Kill process"
-            echo "  c - GPU cleanup | C - Force cleanup | r - Refresh"
-            echo "  h - Help screen | q - Quit"
-            echo
-            echo "Press any key to start..."
-            read -n 1
-            python src/vllm_terminal_manager.py
-            ;;
-        *)
-            echo "VLLM Multi-Model Manager - THE ONLY COMMAND YOU NEED"
-            echo "Usage: $0 [command] [args...]"
-            echo ""
-            echo "Commands:"
-            echo "  (none)        Launch terminal UI (default)"
-            echo "  add           Add a new model configuration"
-            echo "  list          List all configured models"
-            echo "  start         Start a model server"
-            echo "  stop          Stop a model server"
-            echo "  remove        Remove a model configuration"
-            echo "  status        Show system and model status"
-            echo "  cleanup       Clean up GPU memory"
-            echo "  force         Force GPU cleanup (DANGEROUS)"
-            echo ""
-            echo "Examples:"
-            echo "  $0                                              # Launch terminal UI"
-            echo "  $0 add llama-3.1-8b meta-llama/Llama-3.1-8B-Instruct --port 9798"
-            echo "  $0 start llama-3.1-8b"
-            echo "  $0 list"
-            echo "  $0 status"
-            echo "  $0 cleanup"
-            echo ""
-            echo "Use '$0 <command> --help' for detailed help on any command"
-            ;;
-    esac
-fi
+    def list_models(self, args) -> int:
+        """List all models"""
+        if not self.manager.models:
+            print("📭 No models configured")
+            return 0
+
+        print("🚀 Configured Models:")
+        print("─" * 80)
+
+        for model in self.manager.models.values():
+            status_icon = {
+                "running": "🟢",
+                "starting": "🟡",
+                "stopped": "⚫",
+                "error": "🔴",
+                "unhealthy": "🟠"
+            }.get(model.status.value, "⚫")
+
+            print(f"{status_icon} {model.name}")
+            print(f"   🤖 Model: {model.config.huggingface_id}")
+            print(f"   🔌 Port: {model.config.port}")
+            print(f"   🎯 Priority: {model.config.priority}")
+            print(f"   📊 Status: {model.status.value}")
+            if model.pid:
+                print(f"   🧩 PID: {model.pid}")
+            if model.last_error:
+                print(f"   ❌ Error: {model.last_error[:50]}...")
+            print()
+
+        return 0
+
+    def start_model(self, args) -> int:
+        """Start a model"""
+        success, message = self.manager.start_model(args.name)
+        if success:
+            print(f"✅ {message}")
+        else:
+            print(f"❌ {message}")
+            return 1
+        return 0
+
+    def stop_model(self, args) -> int:
+        """Stop a model"""
+        success, message = self.manager.stop_model(args.name)
+        if success:
+            print(f"✅ {message}")
+        else:
+            print(f"❌ {message}")
+            return 1
+        return 0
+
+    def remove_model(self, args) -> int:
+        """Remove a model"""
+        if self.manager.remove_model(args.name):
+            print(f"✅ Model '{args.name}' removed")
+        else:
+            print(f"❌ Model '{args.name}' not found")
+            return 1
+        return 0
+
+    def status(self, args) -> int:
+        """Show system status"""
+        self.manager.update_model_stats()
+
+        # GPU Info
+        gpus = self.manager.system_monitor.get_gpu_info()
+        if gpus:
+            gpu = gpus[0]
+            print("💻 GPU Status:")
+            print(f"   🎮 Name: {gpu.name}")
+            print(f"   🧠 Memory: {gpu.memory_used_mb:.0f}/{gpu.memory_total_mb:.0f}MB ({gpu.memory_used_mb/gpu.memory_total_mb*100:.1f}%)")
+            print(f"   ⚡ Utilization: {gpu.utilization_percent}%")
+            if gpu.temperature:
+                print(f"   🌡️ Temperature: {gpu.temperature}°C")
+            print()
+
+        # Running Models
+        running_models = [m for m in self.manager.models.values() if m.status.value in ["running", "starting"]]
+        if running_models:
+            print("🟢 Running Models:")
+            for model in running_models:
+                print(f"   🚀 {model.name} (port {model.config.port}, PID {model.pid})")
+                print(f"      🎮 GPU Memory: {model.gpu_memory_mb:.0f}MB")
+                print(f"      💻 CPU: {model.cpu_percent:.1f}%")
+                if model.uptime_seconds:
+                    hours = int(model.uptime_seconds // 3600)
+                    minutes = int((model.uptime_seconds % 3600) // 60)
+                    print(f"      ⏱️ Uptime: {hours:02d}:{minutes:02d}")
+            print()
+
+        # GPU Processes
+        processes = self.manager.system_monitor.get_gpu_processes()
+        if processes:
+            print("🧩 GPU Processes:")
+            for proc in processes:
+                print(f"   🧩 PID {proc.pid}: {proc.name}")
+                print(f"      🎮 GPU Memory: {proc.gpu_memory_mb:.0f}MB")
+                print(f"      💻 CPU: {proc.cpu_percent:.1f}%")
+            print()
+
+        return 0
+
+    def cleanup(self, args) -> int:
+        """GPU cleanup command"""
+        print("⚠️  WARNING: This will kill ALL GPU processes!")
+        print("🖥️  This is intended for headless Linux servers.")
+        print("🔄 Your desktop may freeze and require a restart.")
+        print()
+
+        try:
+            response = input("Type 'CLEANUP' to continue or anything else to abort: ")
+            if response != "CLEANUP":
+                print("\n❌ Aborted.")
+                return 0
+        except KeyboardInterrupt:
+            print("\n❌ Aborted.")
+            return 0
+
+        print("🧹 Starting GPU cleanup...")
+        success, message = self.manager.aggressive_gpu_cleanup()
+
+        if success:
+            print(f"✅ {message}")
+        else:
+            print(f"❌ {message}")
+            return 1
+
+        return 0
+
+    def gui(self, args) -> int:
+        """Launch the GUI"""
+        print("🚀 Launching VLLM Manager GUI...")
+        try:
+            # Import the main GUI function
+            from vllm_manager import main as gui_main
+            gui_main()
+            return 0
+        except KeyboardInterrupt:
+            print("\n👋 GUI terminated")
+            return 0
+        except Exception as e:
+            print(f"❌ Error launching GUI: {e}")
+            return 1
+
+    def install(self, args) -> int:
+        """Install VLLM Manager system-wide"""
+        print("🚀 Installing VLLM Manager system-wide...")
+
+        # Paths
+        install_dir = Path("/usr/local/bin")
+        config_dir = Path.home() / ".vllm-manager"
+        script_dir = Path(__file__).parent
+
+        # Create directories
+        config_dir.mkdir(parents=True, exist_ok=True)
+
+        # Copy main files
+        try:
+            # Copy the main manager script
+            manager_src = script_dir / "vllm_manager.py"
+            manager_dst = config_dir / "vllm_manager.py"
+            shutil.copy2(manager_src, manager_dst)
+
+            # Copy this script to /usr/local/bin/vm
+            vm_dst = install_dir / "vm"
+            shutil.copy2(__file__, vm_dst)
+            os.chmod(vm_dst, 0o755)
+
+            # Create .env file if it doesn't exist
+            env_file = config_dir / ".env"
+            if not env_file.exists():
+                with open(env_file, 'w') as f:
+                    f.write("# VLLM Manager Configuration\n")
+                    f.write("# HF_TOKEN=your_huggingface_token_here\n")
+                    f.write("# VLLM_LOG_LEVEL=INFO\n")
+
+            print("✅ Installation complete!")
+            print(f"   📁 Config directory: {config_dir}")
+            print(f"   📝 Environment file: {env_file}")
+            print(f"   🚀 Executable: {vm_dst}")
+            print("\n💡 Usage:")
+            print("   vm gui     - Launch the GUI")
+            print("   vm add     - Add a model")
+            print("   vm list    - List models")
+            print("   vm start   - Start a model")
+            print("   vm stop    - Stop a model")
+            print("   vm status  - Show system status")
+
+            return 0
+
+        except PermissionError:
+            print("❌ Permission denied. Try with sudo:")
+            print("   sudo vm install")
+            return 1
+        except Exception as e:
+            print(f"❌ Installation failed: {e}")
+            return 1
+
+def create_parser():
+    """Create argument parser"""
+    parser = argparse.ArgumentParser(
+        description="VLLM Manager - Modern terminal-based vLLM model management",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""
+🚀 VLLM MANAGER - Modern Terminal Interface
+
+📋 COMMANDS:
+  vm gui                 Launch the graphical terminal interface
+  vm add <name> <id>     Add a new model
+  vm list                List all models
+  vm start <name>        Start a model
+  vm stop <name>         Stop a model
+  vm remove <name>       Remove a model
+  vm status              Show system status
+  vm cleanup             Clean GPU memory
+  vm install             Install system-wide
+
+📝 EXAMPLES:
+  vm gui                           # Launch GUI
+  vm add llama3 meta-llama/Llama-3-8B --port 8001
+  vm start llama3
+  vm stop llama3
+  vm status
+  vm cleanup
+
+🔧 ENVIRONMENT:
+  HF_TOKEN                      Hugging Face token (in .env file)
+  VLLM_LOG_LEVEL                Logging level (DEBUG, INFO, WARN, ERROR)
+
+💡 TIPS:
+  • Use 'vm gui' for the best experience
+  • Set HF_TOKEN in ~/.vllm-manager/.env
+  • Models auto-restart on crashes
+  • Press 'H' in GUI for help
+        """
+    )
+
+    subparsers = parser.add_subparsers(dest='command', help='Available commands')
+
+    # GUI command (default)
+    gui_parser = subparsers.add_parser('gui', help='Launch the graphical terminal interface')
+
+    # Add model command
+    add_parser = subparsers.add_parser('add', help='Add a new model')
+    add_parser.add_argument('name', help='Model name (e.g., "llama3")')
+    add_parser.add_argument('model_id', help='HuggingFace model ID (e.g., "meta-llama/Llama-3-8B")')
+    add_parser.add_argument('--port', type=int, required=True, help='Port number')
+    add_parser.add_argument('--priority', type=int, default=3, choices=[1,2,3,4,5], help='Process priority')
+    add_parser.add_argument('--gpu-memory', type=float, default=0.3, help='GPU memory utilization (0.1-0.9)')
+    add_parser.add_argument('--max-len', type=int, default=2048, help='Maximum sequence length')
+    add_parser.add_argument('--tensor-parallel', type=int, default=1, help='Tensor parallel size')
+
+    # List command
+    list_parser = subparsers.add_parser('list', help='List all models')
+
+    # Start command
+    start_parser = subparsers.add_parser('start', help='Start a model')
+    start_parser.add_argument('name', help='Model name')
+
+    # Stop command
+    stop_parser = subparsers.add_parser('stop', help='Stop a model')
+    stop_parser.add_argument('name', help='Model name')
+
+    # Remove command
+    remove_parser = subparsers.add_parser('remove', help='Remove a model')
+    remove_parser.add_argument('name', help='Model name')
+
+    # Status command
+    status_parser = subparsers.add_parser('status', help='Show system status')
+
+    # Cleanup command
+    cleanup_parser = subparsers.add_parser('cleanup', help='Clean GPU memory')
+
+    # Install command
+    install_parser = subparsers.add_parser('install', help='Install system-wide')
+
+    return parser
+
+def main():
+    """Main CLI entry point"""
+    parser = create_parser()
+    args = parser.parse_args()
+
+    # If no command, default to GUI
+    if not args.command:
+        args.command = 'gui'
+
+    # Handle Ctrl+C gracefully
+    def signal_handler(sig, frame):
+        print("\n👋 Goodbye!")
+        sys.exit(0)
+
+    signal.signal(signal.SIGINT, signal_handler)
+
+    # Create CLI handler
+    cli = VLLMCLI()
+
+    # Route to appropriate handler
+    command_handlers = {
+        'gui': cli.gui,
+        'add': cli.add_model,
+        'list': cli.list_models,
+        'start': cli.start_model,
+        'stop': cli.stop_model,
+        'remove': cli.remove_model,
+        'status': cli.status,
+        'cleanup': cli.cleanup,
+        'install': cli.install
+    }
+
+    if args.command in command_handlers:
+        try:
+            return command_handlers[args.command](args)
+        except KeyboardInterrupt:
+            print("\n👋 Operation cancelled")
+            return 0
+        except Exception as e:
+            print(f"❌ Error: {e}")
+            return 1
+    else:
+        parser.print_help()
+        return 1
+
+if __name__ == "__main__":
+    sys.exit(main())
