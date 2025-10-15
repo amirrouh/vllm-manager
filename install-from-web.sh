@@ -249,7 +249,6 @@ echo ""
 
 # Ask if user wants to run it now
 read -p "Would you like to launch VLLM Manager now? [y/N] " -n 1 -r
-# Fixed: use echo with proper formatting
 echo
 if [[ $REPLY =~ ^[Yy]$ ]]; then
     echo "Launching VLLM Manager..."
