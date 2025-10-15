@@ -5,7 +5,7 @@ Zero-Setup vLLM Model Management
 ## Installation
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/amirrouh/vllm-manager/master/install-v2.sh | bash
+curl -fsSL https://raw.githubusercontent.com/amirrouh/vllm-manager/master/install.sh | bash
 ```
 
 That's it! VLLM Manager is now installed and ready to use.
