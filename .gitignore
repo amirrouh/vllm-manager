@@ -2,3 +2,5 @@ __pycache__/
 .claude/
 *CLAUDE*.md
 .env
+.venv/
+terminal_screenshot*.txt
