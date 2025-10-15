@@ -76,6 +76,9 @@ def setup_vllm_environment():
         print(f"❌ Error setting up vLLM environment: {e}")
         return None
 
+# Define script directory for use throughout the application
+script_dir = Path(__file__).parent
+
 # Ensure vllm environment is set up
 VLLM_PYTHON = setup_vllm_environment()
 if not VLLM_PYTHON:
