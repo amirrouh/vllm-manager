@@ -584,6 +584,7 @@ class ModernTerminalUI:
         curses.init_pair(8, 240, -1)    # Dark gray (borders)
         curses.init_pair(9, 34, -1)     # Green (unhealthy)
         curses.init_pair(10, 248, -1)   # Gray (text)
+        curses.init_pair(11, 237, -1)   # Very dark gray (background dim)
 
         self.colors = {
             'running': curses.color_pair(1) | curses.A_BOLD,
@@ -792,7 +793,7 @@ class ModernTerminalUI:
         """Main UI loop"""
         curses.curs_set(0)
         stdscr.nodelay(True)
-        stdscr.timeout(100)
+        stdscr.timeout(50)  # Reduce timeout for better responsiveness
 
         self.init_colors()
 
@@ -800,38 +801,43 @@ class ModernTerminalUI:
         self.model_manager.start_monitoring()
 
         last_refresh = 0
+        last_background_draw = None  # Track when background was last drawn
 
         while self.running:
             current_time = time.time()
 
             # Refresh screen
             key = stdscr.getch()
-            if key != -1 or current_time - last_refresh > 1:
-                stdscr.clear()
-                stdscr.bkgd(' ', self.colors['normal'])
+            needs_refresh = key != -1 or current_time - last_refresh > 0.5  # Refresh more frequently
+
+            if needs_refresh:
+                # Only clear screen if not in dialog mode (to avoid flicker)
+                if self.current_view not in ["add_model", "model_settings", "delete_confirm", "cleanup_confirm"]:
+                    stdscr.clear()
+                    stdscr.bkgd(' ', self.colors['normal'])
 
                 if self.show_help:
                     self.draw_help(stdscr)
-                elif self.current_view == "add_model":
-                    self.draw_header(stdscr)
-                    self.draw_models_table(stdscr, 7)
-                    self.draw_add_model_dialog(stdscr)
-                elif self.current_view == "model_settings":
-                    self.draw_header(stdscr)
-                    self.draw_models_table(stdscr, 7)
-                    self.draw_model_settings_dialog(stdscr)
-                elif self.current_view == "delete_confirm":
-                    self.draw_header(stdscr)
-                    self.draw_models_table(stdscr, 7)
-                    self.draw_delete_confirmation_dialog(stdscr)
-                elif self.current_view == "cleanup_confirm":
-                    self.draw_header(stdscr)
-                    self.draw_models_table(stdscr, 7)
-                    self.draw_cleanup_confirmation_dialog(stdscr)
+                elif self.current_view in ["add_model", "model_settings", "delete_confirm", "cleanup_confirm"]:
+                    # For dialogs, only redraw background if needed
+                    if last_background_draw != self.current_view:
+                        self.draw_darkened_background(stdscr)
+                        last_background_draw = self.current_view
+
+                    # Draw the appropriate dialog
+                    if self.current_view == "add_model":
+                        self.draw_add_model_dialog(stdscr)
+                    elif self.current_view == "model_settings":
+                        self.draw_model_settings_dialog(stdscr)
+                    elif self.current_view == "delete_confirm":
+                        self.draw_delete_confirmation_dialog(stdscr)
+                    elif self.current_view == "cleanup_confirm":
+                        self.draw_cleanup_confirmation_dialog(stdscr)
                 else:
                     self.draw_header(stdscr)
                     self.draw_models_table(stdscr, 7)
                     self.draw_controls(stdscr)
+                    last_background_draw = None  # Reset background tracking
 
                 # Status message
                 if self.status_message and self.status_time:
@@ -846,7 +852,8 @@ class ModernTerminalUI:
             if key != -1:
                 self.handle_input(key)
 
-            time.sleep(0.05)
+            # Reduced sleep time for better performance
+            time.sleep(0.01)
 
         # Stop monitoring
         self.model_manager.stop_monitoring()
@@ -1087,6 +1094,33 @@ class ModernTerminalUI:
         instructions = "Y: Yes, Cleanup    N: No, Cancel"
         stdscr.addstr(dialog_y + dialog_height - 3, dialog_x + (dialog_width - len(instructions)) // 2,
                      instructions, self.colors['info'])
+
+    def draw_darkened_background(self, stdscr):
+        """Draw a darkened background for dialogs efficiently"""
+        height, width = stdscr.getmaxyx()
+
+        try:
+            # Simple efficient approach: clear with dark background
+            stdscr.clear()
+            stdscr.bkgd(' ', curses.color_pair(11))
+
+            # Draw basic UI structure in dimmed colors
+            # Draw a simple dimmed header
+            title = "🚀 VLLM MANAGER 🚀"
+            stdscr.addstr(0, (width - len(title)) // 2, title, curses.color_pair(11) | curses.A_DIM)
+
+            # Draw minimal model info to show context
+            models = list(self.model_manager.models.values())
+            if models:
+                info_text = f"{len(models)} models configured"
+                stdscr.addstr(2, (width - len(info_text)) // 2, info_text, curses.color_pair(11) | curses.A_DIM)
+
+            # Reset background for dialog rendering
+            stdscr.bkgd(' ', self.colors['normal'])
+        except:
+            # Ultimate fallback
+            stdscr.clear()
+            stdscr.bkgd(' ', curses.color_pair(8))
 
     def handle_dialog_input(self, key):
         """Handle input in dialog mode"""
