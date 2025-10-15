@@ -249,7 +249,7 @@ echo ""
 
 # Ask if user wants to run it now
 read -p "Would you like to launch VLLM Manager now? [y/N] " -n 1 -r
-echo
+echo ""
 if [[ $REPLY =~ ^[Yy]$ ]]; then
     echo "Launching VLLM Manager..."
     vm gui
