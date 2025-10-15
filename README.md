@@ -16,7 +16,7 @@
 ### **The Ultimate One-Command Installation**
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/amirrouh/vllm-manager/main/install-from-web.sh | bash
+curl -fsSL https://raw.githubusercontent.com/amirrouh/vllm-manager/master/install-from-web.sh | bash
 ```
 
 **That's literally it!** One command and everything is installed globally. 🎉
@@ -74,7 +74,7 @@ vm uninstall
 vm uninstall
 
 # If vm command is broken, use the web uninstaller:
-curl -fsSL https://raw.githubusercontent.com/amirrouh/vllm-manager/main/uninstall-from-web.sh | bash
+curl -fsSL https://raw.githubusercontent.com/amirrouh/vllm-manager/master/uninstall-from-web.sh | bash
 
 # Manual uninstall (last resort):
 sudo rm -rf /opt/vllm-manager
