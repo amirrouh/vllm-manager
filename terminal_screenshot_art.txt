@@ -1,10 +1,3 @@
-# VLLM Terminal Manager
-
-A terminal-based tool for managing multiple VLLM models with smart GPU resource allocation.
-
-## Terminal Interface
-
-```
 ╔══════════════════════════════════════════════════════════════════════════════╗
 ║                          VLLM Terminal Manager                              ║
 ╠══════════════════════════════════════════════════════════════════════════════╣
@@ -27,65 +20,3 @@ A terminal-based tool for managing multiple VLLM models with smart GPU resource 
 ║    ↑/↓ Navigate | Enter Start/Stop | a Add | d Delete | c Cleanup | q Quit  ║
 ║                                                                              ║
 ╚══════════════════════════════════════════════════════════════════════════════╝
-```
-
-## Quick Start
-
-### Launch the Terminal UI
-```bash
-./vm gui
-```
-
-### Add a Model
-```bash
-./vm add my-model mistralai/Mistral-7B-Instruct-v0.2 --port 8001
-```
-
-### Basic Commands
-```bash
-./vm list                # Show all models
-./vm start my-model      # Start a model
-./vm stop my-model       # Stop a model
-./vm status              # Check system status
-```
-
-## Features
-
-- **Real-time GPU monitoring** - Track memory, utilization, and temperature
-- **Priority system** - High-priority models get resources automatically
-- **Multi-model support** - Run several models simultaneously
-- **Smart cleanup** - Free memory by stopping low-priority models
-
-## Terminal Controls
-
-| Key | Action |
-|-----|--------|
-| ↑/↓ | Navigate models |
-| Enter | Start/Stop model |
-| a | Add model |
-| d | Delete model |
-| c | GPU cleanup |
-| q | Quit |
-
-## Priority Levels
-
-- **Priority 1-2**: Protected (never auto-killed)
-- **Priority 3**: Medium priority
-- **Priority 4-5**: Low priority (first to be killed)
-
-## Status Indicators
-
-- 🟢 Running
-- 🟡 Starting
-- 🔴 Error
-- ⚫ Stopped
-
-## Requirements
-
-- Python 3.8+
-- NVIDIA GPU with CUDA
-- vLLM installed
-
----
-
-*The terminal manager automatically handles resource conflicts to keep your high-priority models running!*
