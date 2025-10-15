@@ -5,6 +5,7 @@ A sleek, terminal-based vLLM model management system
 """
 
 import curses
+import httpx
 import json
 import logging
 import os
@@ -19,6 +20,7 @@ from enum import Enum
 import threading
 import signal
 import sys
+import os
 from dotenv import load_dotenv
 
 # Load environment variables
@@ -42,7 +44,7 @@ def setup_vllm_environment():
             if result.returncode == 0:
                 print("✅ vLLM environment already set up")
                 return str(venv_python)
-        except:
+        except (subprocess.CalledProcessError, FileNotFoundError):
             pass
 
     print("🔧 Setting up vLLM environment for the first time...")
@@ -213,7 +215,7 @@ class SystemMonitor:
                     try:
                         process = psutil.Process(pid)
                         cpu_percent = process.cpu_percent()
-                    except:
+                    except (psutil.NoSuchProcess, psutil.AccessDenied):
                         pass
 
                     processes.append(ProcessInfo(
@@ -274,7 +276,7 @@ class SystemMonitor:
             result = subprocess.run(["lsof", "-ti", f":{port}"],
                                   capture_output=True, text=True)
             return bool(result.stdout.strip())
-        except:
+        except (subprocess.CalledProcessError, FileNotFoundError):
             return False
 
 # =============================================================================
@@ -287,7 +289,7 @@ class ModelManager:
         self.config_file = self.config_dir / "models.json"
         self.models: Dict[str, ModelState] = {}
         self.system_monitor = SystemMonitor()
-        self.health_check_interval = 30
+        self.health_check_interval = 5  # Reduced from 30 for better responsiveness
         self.max_restarts = 3
         self.monitoring = False
         self.monitor_thread = None
@@ -383,7 +385,7 @@ class ModelManager:
                     pid = int(result.stdout.strip())
                     self.system_monitor.kill_process(pid)
                     time.sleep(1)
-                except:
+                except (ValueError, ProcessLookupError):
                     pass
 
         model.status = ModelStatus.STARTING
@@ -414,10 +416,12 @@ class ModelManager:
             if hf_token:
                 env["HF_TOKEN"] = hf_token
 
+            # Start process with better error logging
+            logger.info(f"Starting vLLM process with command: {' '.join(cmd)}")
             process = subprocess.Popen(
                 cmd,
-                stdout=subprocess.DEVNULL,
-                stderr=subprocess.PIPE,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT,
                 cwd=script_dir,
                 env=env,
                 text=True
@@ -435,11 +439,13 @@ class ModelManager:
                     return True, f"Model {name} started successfully on port {model.config.port}"
 
                 if process.poll() is not None:
-                    _, stderr = process.communicate()
+                    stdout, _ = process.communicate()
+                    error_msg = stdout[-1000:] if stdout else "Unknown error"
+                    logger.error(f"Model {name} process failed with output: {error_msg}")
                     model.status = ModelStatus.ERROR
                     model.pid = None
-                    model.last_error = stderr[-500:] if stderr else "Unknown error"
-                    return False, f"Model failed to start: {model.last_error}"
+                    model.last_error = error_msg
+                    return False, f"Model failed to start: {error_msg}"
 
                 time.sleep(2)
 
@@ -522,9 +528,8 @@ class ModelManager:
     def _check_model_health(self, model: ModelState) -> bool:
         """Check if model is healthy"""
         try:
-            import httpx
             with httpx.Client(timeout=5.0) as client:
-                response = client.get(f"http://localhost:{model.config.port}/health")
+                response = client.get(f"http://localhost:{model.config.port}/v1/models")
                 healthy = response.status_code == 200
                 if healthy:
                     logger.debug(f"Model {model.name} health check passed")
@@ -629,35 +634,51 @@ class ModernTerminalUI:
 
     def init_colors(self):
         """Initialize modern color scheme"""
-        curses.start_color()
-        curses.use_default_colors()
+        try:
+            curses.start_color()
+            curses.use_default_colors()
 
-        # Define modern color palette
-        curses.init_pair(1, 46, -1)    # Bright green (running)
-        curses.init_pair(2, 196, -1)    # Bright red (error)
-        curses.init_pair(3, 226, -1)    # Bright yellow (starting)
-        curses.init_pair(4, 21, -1)     # Bright blue (headers)
-        curses.init_pair(5, 51, -1)     # Bright cyan (info)
-        curses.init_pair(6, 201, -1)    # Bright magenta (highlight)
-        curses.init_pair(7, 15, 18)     # White on dark blue (selected)
-        curses.init_pair(8, 240, -1)    # Dark gray (borders)
-        curses.init_pair(9, 34, -1)     # Green (unhealthy)
-        curses.init_pair(10, 248, -1)   # Gray (text)
-        curses.init_pair(11, 237, -1)   # Very dark gray (background dim)
+            # Define modern color palette
+            curses.init_pair(1, 46, -1)    # Bright green (running)
+            curses.init_pair(2, 196, -1)    # Bright red (error)
+            curses.init_pair(3, 226, -1)    # Bright yellow (starting)
+            curses.init_pair(4, 21, -1)     # Bright blue (headers)
+            curses.init_pair(5, 51, -1)     # Bright cyan (info)
+            curses.init_pair(6, 201, -1)    # Bright magenta (highlight)
+            curses.init_pair(7, 15, 18)     # White on dark blue (selected)
+            curses.init_pair(8, 240, -1)    # Dark gray (borders)
+            curses.init_pair(9, 34, -1)     # Green (unhealthy)
+            curses.init_pair(10, 248, -1)   # Gray (text)
+            curses.init_pair(11, 237, -1)   # Very dark gray (background dim)
 
-        self.colors = {
-            'running': curses.color_pair(1) | curses.A_BOLD,
-            'error': curses.color_pair(2) | curses.A_BOLD,
-            'starting': curses.color_pair(3) | curses.A_BOLD,
-            'header': curses.color_pair(4) | curses.A_BOLD,
-            'info': curses.color_pair(5),
-            'highlight': curses.color_pair(6) | curses.A_BOLD,
-            'selected': curses.color_pair(7) | curses.A_BOLD,
-            'border': curses.color_pair(8),
-            'unhealthy': curses.color_pair(9),
-            'text': curses.color_pair(10),
-            'normal': curses.A_NORMAL
-        }
+            self.colors = {
+                'running': curses.color_pair(1) | curses.A_BOLD,
+                'error': curses.color_pair(2) | curses.A_BOLD,
+                'starting': curses.color_pair(3) | curses.A_BOLD,
+                'header': curses.color_pair(4) | curses.A_BOLD,
+                'info': curses.color_pair(5),
+                'highlight': curses.color_pair(6) | curses.A_BOLD,
+                'selected': curses.color_pair(7) | curses.A_BOLD,
+                'border': curses.color_pair(8),
+                'unhealthy': curses.color_pair(9),
+                'text': curses.color_pair(10),
+                'normal': curses.A_NORMAL
+            }
+        except:
+            # Fallback to basic colors if color initialization fails
+            self.colors = {
+                'running': curses.A_BOLD,
+                'error': curses.A_BOLD,
+                'starting': curses.A_BOLD,
+                'header': curses.A_BOLD,
+                'info': curses.A_NORMAL,
+                'highlight': curses.A_BOLD,
+                'selected': curses.A_REVERSE,
+                'border': curses.A_NORMAL,
+                'unhealthy': curses.A_NORMAL,
+                'text': curses.A_NORMAL,
+                'normal': curses.A_NORMAL
+            }
 
     def draw_box(self, stdscr, x: int, y: int, width: int, height: int, title: str = ""):
         """Draw a modern box with rounded corners"""
@@ -786,8 +807,8 @@ class ModernTerminalUI:
 
         controls = [
             "CONTROLS",
-            "↑/↓ • Navigate   ENTER • Start/Stop   A • Add   S • Settings   D • Delete",
-            "K • Kill Process   C • Cleanup   H • Help   Q • Quit"
+            "↑/↓ • Navigate   ENTER • Start/Stop   A • Add   S • Settings   E • Edit   D • Delete",
+            "K • Kill Process   C • Cleanup   T • Token   H • Help   Q • Quit/Exit"
         ]
 
         control_y = height - 4
@@ -822,6 +843,7 @@ class ModernTerminalUI:
             "",
             "SYSTEM MANAGEMENT:",
             "  C                 Clean GPU memory",
+            "  T                 Configure HuggingFace token",
             "",
             "ENVIRONMENT:",
             "  HF_TOKEN          Set in .env file for Hugging Face auth",
@@ -850,9 +872,20 @@ class ModernTerminalUI:
 
     def run(self, stdscr):
         """Main UI loop"""
-        curses.curs_set(0)
-        stdscr.nodelay(True)
-        stdscr.timeout(50)  # Reduce timeout for better responsiveness
+        try:
+            curses.curs_set(0)
+        except:
+            pass  # Ignore cursor setting errors
+
+        try:
+            stdscr.nodelay(True)
+        except:
+            pass  # Ignore nodelay setting errors
+
+        try:
+            stdscr.timeout(100)  # Optimized timeout for performance
+        except:
+            stdscr.timeout(100)  # Fallback timeout
 
         self.init_colors()
 
@@ -867,17 +900,17 @@ class ModernTerminalUI:
 
             # Refresh screen
             key = stdscr.getch()
-            needs_refresh = key != -1 or current_time - last_refresh > 0.5  # Refresh more frequently
+            needs_refresh = key != -1 or current_time - last_refresh > 1.0  # Optimized refresh frequency
 
             if needs_refresh:
                 # Only clear screen if not in dialog mode (to avoid flicker)
-                if self.current_view not in ["add_model", "model_settings", "delete_confirm", "cleanup_confirm"]:
+                if self.current_view not in ["add_model", "model_settings", "delete_confirm", "cleanup_confirm", "token_config", "quit_confirm"]:
                     stdscr.clear()
                     stdscr.bkgd(' ', self.colors['normal'])
 
                 if self.show_help:
                     self.draw_help(stdscr)
-                elif self.current_view in ["add_model", "model_settings", "delete_confirm", "cleanup_confirm"]:
+                elif self.current_view in ["add_model", "model_settings", "model_edit", "delete_confirm", "cleanup_confirm", "token_config", "quit_confirm"]:
                     # For dialogs, only redraw background if needed
                     if last_background_draw != self.current_view:
                         self.draw_darkened_background(stdscr)
@@ -888,10 +921,16 @@ class ModernTerminalUI:
                         self.draw_add_model_dialog(stdscr)
                     elif self.current_view == "model_settings":
                         self.draw_model_settings_dialog(stdscr)
+                    elif self.current_view == "model_edit":
+                        self.draw_model_edit_dialog(stdscr)
                     elif self.current_view == "delete_confirm":
                         self.draw_delete_confirmation_dialog(stdscr)
                     elif self.current_view == "cleanup_confirm":
                         self.draw_cleanup_confirmation_dialog(stdscr)
+                    elif self.current_view == "token_config":
+                        self.draw_token_dialog(stdscr)
+                    elif self.current_view == "quit_confirm":
+                        self.draw_quit_dialog(stdscr)
                 else:
                     self.draw_header(stdscr)
                     self.draw_models_table(stdscr, 7)
@@ -911,8 +950,8 @@ class ModernTerminalUI:
             if key != -1:
                 self.handle_input(key)
 
-            # Reduced sleep time for better performance
-            time.sleep(0.01)
+            # Optimized sleep time for better performance
+            time.sleep(0.05)
 
         # Stop monitoring
         self.model_manager.stop_monitoring()
@@ -925,14 +964,16 @@ class ModernTerminalUI:
             return
 
         # Handle dialog input first
-        if self.current_view in ["add_model", "model_settings", "delete_confirm", "cleanup_confirm"]:
+        if self.current_view in ["add_model", "model_settings", "model_edit", "delete_confirm", "cleanup_confirm", "token_config", "quit_confirm"]:
             self.handle_dialog_input(key)
             return
 
         models = list(self.model_manager.models.values())
 
-        if key == ord('q') or key == 27:  # Q or ESC
-            self.running = False
+        if key == ord('q') or key == ord('Q'):  # Q key for quit
+            self.show_quit_dialog()
+        elif key == 27:  # ESC to cancel dialogs
+            pass  # ESC handled elsewhere
         elif key == curses.KEY_UP and models:
             self.selected_index = max(0, self.selected_index - 1)
         elif key == curses.KEY_DOWN and models:
@@ -951,6 +992,10 @@ class ModernTerminalUI:
             if models and 0 <= self.selected_index < len(models):
                 model = models[self.selected_index]
                 self.show_model_settings_dialog(model.name)
+        elif key == ord('e') or key == ord('E'):
+            if models and 0 <= self.selected_index < len(models):
+                model = models[self.selected_index]
+                self.show_model_edit_dialog(model.name)
         elif key == ord('d') or key == ord('D'):
             if models and 0 <= self.selected_index < len(models):
                 model = models[self.selected_index]
@@ -969,6 +1014,8 @@ class ModernTerminalUI:
             self.show_cleanup_confirmation_dialog()
         elif key == ord('h') or key == ord('H'):
             self.show_help = True
+        elif key == ord('t') or key == ord('T'):
+            self.show_token_dialog()
 
     def show_add_model_dialog(self):
         """Show add model dialog with full configuration"""
@@ -1000,6 +1047,25 @@ class ModernTerminalUI:
             'tensor_parallel': str(model.config.tensor_parallel_size)
         }
 
+    def show_model_edit_dialog(self, model_name: str):
+        """Show model edit dialog for editing all fields including huggingface_id"""
+        if model_name not in self.model_manager.models:
+            return
+
+        model = self.model_manager.models[model_name]
+        self.current_view = "model_edit"
+        self.dialog_state = {
+            'model_name': model_name,
+            'field': 'name',
+            'name': model.name,
+            'huggingface_id': model.config.huggingface_id,
+            'port': str(model.config.port),
+            'priority': str(model.config.priority),
+            'gpu_memory': str(model.config.gpu_memory_utilization),
+            'max_len': str(model.config.max_model_len),
+            'tensor_parallel': str(model.config.tensor_parallel_size)
+        }
+
     def show_delete_confirmation_dialog(self, model_name: str):
         """Show delete confirmation dialog"""
         self.current_view = "delete_confirm"
@@ -1012,6 +1078,34 @@ class ModernTerminalUI:
         """Show GPU cleanup confirmation dialog"""
         self.current_view = "cleanup_confirm"
         self.dialog_state = {}
+
+    def show_quit_dialog(self):
+        """Show quit confirmation dialog"""
+        self.current_view = "quit_confirm"
+        self.dialog_state = {}
+
+    def show_token_dialog(self):
+        """Show HuggingFace token configuration dialog"""
+        self.current_view = "token_config"
+        # Read current token from environment or .env file
+        current_token = ""
+        env_file = Path.home() / ".vllm-manager" / ".env"
+        if env_file.exists():
+            try:
+                with open(env_file, 'r') as f:
+                    for line in f:
+                        if line.startswith('HF_TOKEN='):
+                            current_token = line.strip().split('=', 1)[1]
+                            break
+            except:
+                pass
+        else:
+            current_token = os.environ.get("HF_TOKEN", "")
+
+        self.dialog_state = {
+            'token': current_token,
+            'show_token': False  # Toggle to show/hide token
+        }
 
     def draw_add_model_dialog(self, stdscr):
         """Draw add model dialog"""
@@ -1108,6 +1202,60 @@ class ModernTerminalUI:
         stdscr.addstr(dialog_y + dialog_height - 3, dialog_x + (dialog_width - len(instructions)) // 2,
                      instructions, self.colors['info'])
 
+    def draw_model_edit_dialog(self, stdscr):
+        """Draw model edit dialog"""
+        height, width = stdscr.getmaxyx()
+
+        dialog_width = 80
+        dialog_height = 20
+        dialog_x = (width - dialog_width) // 2
+        dialog_y = (height - dialog_height) // 2
+
+        model_name = self.dialog_state['model_name']
+        self.draw_box(stdscr, dialog_x, dialog_y, dialog_width, dialog_height, f"EDIT MODEL: {model_name}")
+
+        fields = [
+            ('name', 'Model Name:'),
+            ('huggingface_id', 'HuggingFace ID:'),
+            ('port', 'Port:'),
+            ('priority', 'Priority (1-5):'),
+            ('gpu_memory', 'GPU Memory (0.1-0.9):'),
+            ('max_len', 'Max Length:'),
+            ('tensor_parallel', 'Tensor Parallel:')
+        ]
+
+        y_offset = dialog_y + 2
+        for field, label in fields:
+            # Label
+            stdscr.addstr(y_offset, dialog_x + 4, label, self.colors['text'])
+
+            # Input field
+            input_value = self.dialog_state.get(field, '')
+            if self.dialog_state['field'] == field:
+                # Highlight current field
+                stdscr.addstr(y_offset, dialog_x + 25, input_value.ljust(40), self.colors['selected'])
+                # Show cursor
+                if hasattr(stdscr, 'curs_set'):
+                    stdscr.curs_set(1)
+                    stdscr.move(y_offset, dialog_x + 25 + len(input_value))
+            else:
+                stdscr.addstr(y_offset, dialog_x + 25, input_value.ljust(40), self.colors['normal'])
+
+            y_offset += 2
+
+        # Instructions
+        instructions = [
+            "TAB: Next field    ENTER: Save    ESC: Cancel",
+            "⚠️  Changing model name or HuggingFace ID requires model restart to take effect"
+        ]
+
+        y_offset = dialog_y + dialog_height - 4
+        for instruction in instructions:
+            color = self.colors['highlight'] if instruction.startswith("⚠️") else self.colors['info']
+            stdscr.addstr(y_offset, dialog_x + (dialog_width - len(instruction)) // 2,
+                         instruction, color)
+            y_offset += 1
+
     def draw_delete_confirmation_dialog(self, stdscr):
         """Draw delete confirmation dialog"""
         height, width = stdscr.getmaxyx()
@@ -1154,6 +1302,86 @@ class ModernTerminalUI:
         stdscr.addstr(dialog_y + dialog_height - 3, dialog_x + (dialog_width - len(instructions)) // 2,
                      instructions, self.colors['info'])
 
+    def draw_quit_dialog(self, stdscr):
+        """Draw quit confirmation dialog"""
+        height, width = stdscr.getmaxyx()
+
+        dialog_width = 60
+        dialog_height = 8
+        dialog_x = (width - dialog_width) // 2
+        dialog_y = (height - dialog_height) // 2
+
+        self.draw_box(stdscr, dialog_x, dialog_y, dialog_width, dialog_height, "QUIT CONFIRMATION")
+
+        message = "Are you sure you want to exit VLLM Manager?"
+        stdscr.addstr(dialog_y + 3, dialog_x + (dialog_width - len(message)) // 2,
+                     message, self.colors['highlight'])
+
+        instructions = "Y: Yes, Quit    N: No, Cancel"
+        stdscr.addstr(dialog_y + dialog_height - 3, dialog_x + (dialog_width - len(instructions)) // 2,
+                     instructions, self.colors['info'])
+
+    def draw_token_dialog(self, stdscr):
+        """Draw HuggingFace token configuration dialog"""
+        height, width = stdscr.getmaxyx()
+
+        dialog_width = 80
+        dialog_height = 12
+        dialog_x = (width - dialog_width) // 2
+        dialog_y = (height - dialog_height) // 2
+
+        self.draw_box(stdscr, dialog_x, dialog_y, dialog_width, dialog_height, "HUGGINGFACE TOKEN")
+
+        # Current token display
+        token_display = self.dialog_state['token']
+        if not self.dialog_state['show_token'] and token_display:
+            # Mask the token
+            if len(token_display) > 8:
+                token_display = token_display[:4] + "*" * (len(token_display) - 8) + token_display[-4:]
+            else:
+                token_display = "*" * len(token_display)
+
+        y_offset = dialog_y + 2
+
+        # Instructions
+        instructions = [
+            "Enter your HuggingFace token for accessing private/gated models:",
+            "",
+            f"Current Token: {token_display or '(Not set)'}",
+            "",
+            "Commands:",
+            "TAB: Show/Hide token    ENTER: Save    ESC: Cancel",
+            "",
+            "Get your token from: https://huggingface.co/settings/tokens"
+        ]
+
+        for i, instruction in enumerate(instructions):
+            if i == 2:  # Token display line
+                color = self.colors['highlight'] if self.dialog_state['show_token'] else self.colors['text']
+                stdscr.addstr(y_offset + i, dialog_x + 4, instruction, color)
+            elif i == 4:  # Commands header
+                stdscr.addstr(y_offset + i, dialog_x + 4, instruction, self.colors['highlight'])
+            else:
+                stdscr.addstr(y_offset + i, dialog_x + 4, instruction, self.colors['text'])
+
+        # Input field for new token
+        input_y = y_offset + len(instructions) + 1
+        stdscr.addstr(input_y, dialog_x + 4, "New Token: ", self.colors['text'])
+
+        # Draw input field
+        input_width = dialog_width - 16
+        if self.dialog_state['show_token']:
+            stdscr.addstr(input_y, dialog_x + 15, self.dialog_state['token'].ljust(input_width), self.colors['selected'])
+            if hasattr(stdscr, 'curs_set'):
+                stdscr.curs_set(1)
+                stdscr.move(input_y, dialog_x + 15 + len(self.dialog_state['token']))
+        else:
+            masked_input = "*" * len(self.dialog_state['token'])
+            stdscr.addstr(input_y, dialog_x + 15, masked_input.ljust(input_width), self.colors['selected'])
+            if hasattr(stdscr, 'curs_set'):
+                stdscr.curs_set(1)
+                stdscr.move(input_y, dialog_x + 15 + len(masked_input))
+
     def draw_darkened_background(self, stdscr):
         """Draw a darkened background for dialogs efficiently"""
         height, width = stdscr.getmaxyx()
@@ -1176,7 +1404,7 @@ class ModernTerminalUI:
 
             # Reset background for dialog rendering
             stdscr.bkgd(' ', self.colors['normal'])
-        except:
+        except curses.error:
             # Ultimate fallback
             stdscr.clear()
             stdscr.bkgd(' ', curses.color_pair(8))
@@ -1187,10 +1415,16 @@ class ModernTerminalUI:
             self._handle_add_model_input(key)
         elif self.current_view == "model_settings":
             self._handle_model_settings_input(key)
+        elif self.current_view == "model_edit":
+            self._handle_model_edit_input(key)
         elif self.current_view == "delete_confirm":
             self._handle_delete_confirmation_input(key)
         elif self.current_view == "cleanup_confirm":
             self._handle_cleanup_confirmation_input(key)
+        elif self.current_view == "token_config":
+            self._handle_token_input(key)
+        elif self.current_view == "quit_confirm":
+            self._handle_quit_confirmation_input(key)
 
     def _handle_add_model_input(self, key):
         """Handle input in add model dialog"""
@@ -1277,6 +1511,90 @@ class ModernTerminalUI:
             current_field = self.dialog_state['field']
             self.dialog_state[current_field] += chr(key)
 
+    def _handle_model_edit_input(self, key):
+        """Handle input in model edit dialog"""
+        if key == 27:  # ESC
+            self.current_view = "dashboard"
+            self.dialog_state = {}
+            if hasattr(self, 'curs_set'):
+                curses.curs_set(0)
+        elif key == ord('\t'):
+            # Tab to next field
+            fields = ['name', 'huggingface_id', 'port', 'priority', 'gpu_memory', 'max_len', 'tensor_parallel']
+            current_idx = fields.index(self.dialog_state['field'])
+            self.dialog_state['field'] = fields[(current_idx + 1) % len(fields)]
+        elif key == ord('\n'):
+            # Save changes
+            try:
+                old_model_name = self.dialog_state['model_name']
+                new_model_name = self.dialog_state['name']
+
+                # Check if model name changed and new name already exists
+                if old_model_name != new_model_name and new_model_name in self.model_manager.models:
+                    self.set_status(f"Model {new_model_name} already exists")
+                    return
+
+                model = self.model_manager.models[old_model_name]
+
+                # Stop model if it's running and critical fields changed
+                needs_restart = False
+                if (model.status == ModelStatus.RUNNING and
+                    (model.config.huggingface_id != self.dialog_state['huggingface_id'] or
+                     model.config.port != int(self.dialog_state['port']))):
+                    needs_restart = True
+                    success, msg = self.model_manager.stop_model(old_model_name)
+                    if not success:
+                        self.set_status(f"Failed to stop model for update: {msg}")
+                        return
+
+                # Update config
+                model.config.name = new_model_name
+                model.config.huggingface_id = self.dialog_state['huggingface_id']
+                model.config.port = int(self.dialog_state['port'])
+                model.config.priority = int(self.dialog_state['priority'])
+                model.config.gpu_memory_utilization = float(self.dialog_state['gpu_memory'])
+                model.config.max_model_len = int(self.dialog_state['max_len'])
+                model.config.tensor_parallel_size = int(self.dialog_state['tensor_parallel'])
+
+                # Handle model name change
+                if old_model_name != new_model_name:
+                    # Remove old model entry
+                    del self.model_manager.models[old_model_name]
+                    # Create new model entry
+                    model.name = new_model_name
+                    self.model_manager.models[new_model_name] = model
+                    # Update selected index
+                    models = list(self.model_manager.models.values())
+                    for i, m in enumerate(models):
+                        if m.name == new_model_name:
+                            self.selected_index = i
+                            break
+
+                self.model_manager.save_config()
+
+                if needs_restart:
+                    self.set_status(f"Model {new_model_name} updated and restarted")
+                    # Restart the model
+                    success, msg = self.model_manager.start_model(new_model_name)
+                    if not success:
+                        self.set_status(f"Model updated but failed to restart: {msg}")
+                else:
+                    self.set_status(f"Model {new_model_name} updated successfully")
+
+                self.current_view = "dashboard"
+                self.dialog_state = {}
+                if hasattr(self, 'curs_set'):
+                    curses.curs_set(0)
+            except Exception as e:
+                self.set_status(f"Error: {str(e)}")
+        elif key == curses.KEY_BACKSPACE or key == 127:
+            # Backspace
+            current_field = self.dialog_state['field']
+            self.dialog_state[current_field] = self.dialog_state[current_field][:-1]
+        elif 32 <= key <= 126:  # Printable characters
+            current_field = self.dialog_state['field']
+            self.dialog_state[current_field] += chr(key)
+
     def _handle_delete_confirmation_input(self, key):
         """Handle input in delete confirmation dialog"""
         model_name = self.dialog_state['model_name']
@@ -1309,6 +1627,320 @@ class ModernTerminalUI:
             self.current_view = "dashboard"
             self.dialog_state = {}
 
+    def _handle_token_input(self, key):
+        """Handle input in token configuration dialog"""
+        if key == 27:  # ESC
+            self.current_view = "dashboard"
+            self.dialog_state = {}
+            if hasattr(self, 'curs_set'):
+                curses.curs_set(0)
+        elif key == ord('\t'):  # TAB - toggle show/hide token
+            self.dialog_state['show_token'] = not self.dialog_state['show_token']
+        elif key == ord('\n'):  # ENTER - save token
+            try:
+                token = self.dialog_state['token']
+                if token:
+                    # Save to .env file
+                    env_dir = Path.home() / ".vllm-manager"
+                    env_dir.mkdir(parents=True, exist_ok=True)
+                    env_file = env_dir / ".env"
+
+                    with open(env_file, 'w') as f:
+                        f.write(f"HF_TOKEN={token}\n")
+
+                    # Set in current environment
+                    os.environ['HF_TOKEN'] = token
+
+                    self.set_status("✅ HuggingFace token saved successfully")
+                else:
+                    # Remove token if empty
+                    env_file = Path.home() / ".vllm-manager" / ".env"
+                    if env_file.exists():
+                        env_file.unlink()
+                    if 'HF_TOKEN' in os.environ:
+                        del os.environ['HF_TOKEN']
+
+                    self.set_status("✅ HuggingFace token removed")
+
+                self.current_view = "dashboard"
+                self.dialog_state = {}
+                if hasattr(self, 'curs_set'):
+                    curses.curs_set(0)
+            except Exception as e:
+                self.set_status(f"❌ Error saving token: {str(e)}")
+        elif key == curses.KEY_BACKSPACE or key == 127:  # Backspace
+            # Remove last character from token
+            self.dialog_state['token'] = self.dialog_state['token'][:-1]
+        elif 32 <= key <= 126:  # Printable characters
+            # Add character to token
+            self.dialog_state['token'] += chr(key)
+
+    def _handle_quit_confirmation_input(self, key):
+        """Handle input in quit confirmation dialog"""
+        if key == ord('y') or key == ord('Y'):
+            # Confirm quit
+            self.running = False
+        elif key == ord('n') or key == ord('N') or key == 27:  # N or ESC
+            # Cancel quit
+            self.current_view = "dashboard"
+            self.dialog_state = {}
+
+# =============================================================================
+# COMMAND LINE INTERFACE
+# =============================================================================
+
+def launch_gui():
+    """Launch the GUI terminal interface"""
+    # Check if we're in an interactive terminal
+    if not sys.stdin.isatty() or os.environ.get('TERM') == 'dumb':
+        print("❌ VLLM Manager requires an interactive terminal to run")
+        print("💡 Try running in a proper terminal (not in a script or pipe)")
+        print("💡 If using SSH, ensure you have a proper TTY allocated")
+        return 1
+
+    # Initialize GUI
+    model_manager = ModelManager()
+    ui = ModernTerminalUI(model_manager)
+
+    try:
+        # Try to set up terminal properly before calling curses.wrapper
+        os.environ.setdefault('TERM', 'xterm-256color')
+        curses.wrapper(ui.run)
+    except curses.error as e:
+        print(f"❌ Terminal error: {e}")
+        print("💡 Make sure you're running in a proper terminal environment")
+        print("💡 Try: export TERM=xterm-256color")
+        return 1
+    except KeyboardInterrupt:
+        return 0
+    except Exception as e:
+        print(f"❌ Unexpected error: {e}")
+        return 1
+    finally:
+        print("👋 VLLM Manager terminated")
+
+    return 0
+
+def launch_nodejs_backend():
+    """Launch Node.js backend and client for better performance"""
+    import shutil
+
+    # Check if Node.js is installed
+    if not shutil.which("node"):
+        print("❌ Node.js is not installed. Please install Node.js first.")
+        print("💡 On Ubuntu: sudo apt update && sudo apt install nodejs npm")
+        return 1
+
+    # Check if nodejs-backend directory exists
+    backend_dir = script_dir / "nodejs-backend"
+    if not backend_dir.exists():
+        print("❌ Node.js backend directory not found")
+        print("💡 The Node.js backend should be in the 'nodejs-backend' directory")
+        return 1
+
+    print("🚀 Starting VLLM Manager with Node.js Backend...")
+    print("📡 Starting backend server...")
+
+    try:
+        # Start the backend server
+        backend_process = subprocess.Popen(
+            ["node", "src/server.js"],
+            cwd=backend_dir,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            text=True
+        )
+
+        # Wait a moment for the server to start
+        import time
+        time.sleep(2)
+
+        # Check if backend started successfully
+        if backend_process.poll() is not None:
+            stdout, _ = backend_process.communicate()
+            print(f"❌ Backend failed to start: {stdout}")
+            return 1
+
+        print("✅ Backend server started successfully")
+        print("🔌 Starting client...")
+
+        # Start the client
+        client_process = subprocess.Popen(
+            ["node", "src/client.js"],
+            cwd=backend_dir,
+            preexec_fn=os.setsid  # Create new process group
+        )
+
+        # Wait for the client to finish
+        try:
+            client_process.wait()
+        except KeyboardInterrupt:
+            # Kill the entire process group
+            os.killpg(os.getpgid(client_process.pid), signal.SIGTERM)
+
+        # Clean up backend
+        backend_process.terminate()
+        backend_process.wait()
+
+        print("👋 VLLM Manager (Node.js Backend) terminated")
+        return 0
+
+    except FileNotFoundError:
+        print("❌ Node.js not found. Please install Node.js and npm")
+        return 1
+    except Exception as e:
+        print(f"❌ Error starting Node.js backend: {e}")
+        return 1
+
+def handle_cli_command():
+    """Handle command line operations without GUI"""
+    model_manager = ModelManager()
+
+    command = sys.argv[1].lower()
+
+    if command == "gui":
+        # Launch the GUI interface
+        return launch_gui()
+    elif command == "nodejs" or command == "backend":
+        # Launch Node.js backend and client
+        return launch_nodejs_backend()
+    elif command == "start":
+        if len(sys.argv) < 3:
+            print("❌ Usage: vm start <model_name>")
+            return 1
+        model_name = sys.argv[2]
+        print(f"🚀 Starting model: {model_name}")
+        success, message = model_manager.start_model(model_name)
+        if success:
+            print(f"✅ {message}")
+            return 0
+        else:
+            print(f"❌ {message}")
+            return 1
+
+    elif command == "stop":
+        if len(sys.argv) < 3:
+            print("❌ Usage: vm stop <model_name>")
+            return 1
+        model_name = sys.argv[2]
+        print(f"🛑 Stopping model: {model_name}")
+        success, message = model_manager.stop_model(model_name)
+        if success:
+            print(f"✅ {message}")
+            return 0
+        else:
+            print(f"❌ {message}")
+            return 1
+
+    elif command == "list":
+        print("📋 Configured Models:")
+        print("-" * 60)
+        for model in model_manager.models.values():
+            status_icon = {
+                ModelStatus.RUNNING: "●",
+                ModelStatus.STARTING: "◐",
+                ModelStatus.STOPPED: "○",
+                ModelStatus.ERROR: "✗",
+                ModelStatus.UNHEALTHY: "◑"
+            }.get(model.status, "?")
+            print(f"{status_icon} {model.name}")
+            print(f"   HuggingFace ID: {model.config.huggingface_id}")
+            print(f"   Port: {model.config.port}")
+            print(f"   Status: {model.status.value}")
+            if model.last_error:
+                print(f"   Error: {model.last_error}")
+            print()
+        return 0
+
+    elif command == "add":
+        if len(sys.argv) < 4:
+            print("❌ Usage: vm add <name> <huggingface_id> [port]")
+            return 1
+        model_name = sys.argv[2]
+        hf_id = sys.argv[3]
+        port = int(sys.argv[4]) if len(sys.argv) > 4 else 8001
+
+        config = ModelConfig(
+            name=model_name,
+            huggingface_id=hf_id,
+            port=port
+        )
+
+        if model_manager.add_model(config):
+            print(f"✅ Model {model_name} added successfully")
+            return 0
+        else:
+            print(f"❌ Model {model_name} already exists")
+            return 1
+
+    elif command == "remove":
+        if len(sys.argv) < 3:
+            print("❌ Usage: vm remove <model_name>")
+            return 1
+        model_name = sys.argv[2]
+        if model_manager.remove_model(model_name):
+            print(f"✅ Model {model_name} removed successfully")
+            return 0
+        else:
+            print(f"❌ Failed to remove model {model_name}")
+            return 1
+
+    elif command == "status":
+        print("🖥️  System Status:")
+        print("-" * 40)
+
+        # GPU info
+        gpus = model_manager.system_monitor.get_gpu_info()
+        if gpus:
+            gpu = gpus[0]
+            print(f"GPU: {gpu.name}")
+            print(f"Memory: {gpu.memory_used_mb:.0f}/{gpu.memory_total_mb:.0f}MB ({gpu.memory_used_mb/gpu.memory_total_mb*100:.1f}%)")
+            print(f"Utilization: {gpu.utilization_percent}%")
+            if gpu.temperature:
+                print(f"Temperature: {gpu.temperature}°C")
+        else:
+            print("❌ No GPU detected")
+
+        print()
+
+        # Model processes
+        processes = model_manager.system_monitor.get_gpu_processes()
+        if processes:
+            print("🔄 Running GPU Processes:")
+            for proc in processes:
+                print(f"  PID {proc.pid}: {proc.name} ({proc.gpu_memory_mb:.0f}MB)")
+        else:
+            print("💤 No GPU processes running")
+        return 0
+
+    elif command == "cleanup":
+        print("🧹 Cleaning GPU memory...")
+        success, message = model_manager.aggressive_gpu_cleanup()
+        if success:
+            print(f"✅ {message}")
+        else:
+            print(f"❌ {message}")
+        return 0
+
+    else:
+        print(f"❌ Unknown command: {command}")
+        print("💡 Available commands:")
+        print("   vm gui        - Launch terminal GUI (Python)")
+        print("   vm nodejs     - Launch with Node.js backend (faster)")
+        print("   vm start <model> - Start a model")
+        print("   vm stop <model>  - Stop a model")
+        print("   vm list       - List all models")
+        print("   vm add <name> <hf_id> [port] - Add model")
+        print("   vm remove <model> - Remove model")
+        print("   vm status     - Show system status")
+        print("   vm cleanup    - Clean GPU memory")
+        print()
+        print("🚀 RECOMMENDED: Try the new Node.js Edition!")
+        print("   💫 Modern terminal UI with better performance")
+        print("   📦 Install with: curl -sSL https://your-domain.com/install-nodejs.sh | bash")
+        print("   📖 Or check: README-NODEJS.md")
+        return 1
+
 # =============================================================================
 # MAIN APPLICATION
 # =============================================================================
@@ -1321,16 +1953,12 @@ def main():
 
     signal.signal(signal.SIGINT, signal_handler)
 
-    # Initialize
-    model_manager = ModelManager()
-    ui = ModernTerminalUI(model_manager)
+    # Handle command line arguments
+    if len(sys.argv) > 1:
+        return handle_cli_command()
 
-    try:
-        curses.wrapper(ui.run)
-    except KeyboardInterrupt:
-        pass
-
-    print("👋 VLLM Manager terminated")
+    # Default behavior: launch GUI if no arguments provided
+    return launch_gui()
 
 if __name__ == "__main__":
     main()

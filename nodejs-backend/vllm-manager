@@ -1,0 +1,93 @@
+#!/bin/bash
+
+# VLLM Manager Node.js Edition Launcher
+# This script detects the environment and launches the appropriate version
+
+INSTALL_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+# Colors for output
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+BLUE='\033[0;34m'
+BOLD='\033[1m'
+NC='\033[0m' # No Color
+
+print() {
+    echo -e "${2}$1${NC}"
+}
+
+print_success() {
+    print "$1" "$GREEN"
+}
+
+print_error() {
+    print "$1" "$RED"
+}
+
+print_warning() {
+    print "$1" "$YELLOW"
+}
+
+print_info() {
+    print "$1" "$BLUE"
+}
+
+# Check if Node.js is available
+if ! command -v node &> /dev/null; then
+    print_error "❌ Node.js is not installed or not in PATH"
+    print_info "💡 Please install Node.js: https://nodejs.org/"
+    print_info "💡 Or use: curl -sSL https://your-domain.com/install-nodejs.sh | bash"
+    exit 1
+fi
+
+# Check if we're in the right directory
+if [ ! -f "$INSTALL_DIR/package.json" ]; then
+    print_error "❌ VLLM Manager not properly installed"
+    print_info "💡 Please run the installer first"
+    exit 1
+fi
+
+# Check if dependencies are installed
+if [ ! -d "$INSTALL_DIR/node_modules" ]; then
+    print_warning "⚠️  Dependencies not installed. Installing now..."
+    cd "$INSTALL_DIR"
+    npm install
+    if [ $? -ne 0 ]; then
+        print_error "❌ Failed to install dependencies"
+        exit 1
+    fi
+    print_success "✅ Dependencies installed successfully"
+fi
+
+# Check if Python 3 and vLLM are available
+VLLM_AVAILABLE=false
+if python3 -c "import vllm" &> /dev/null; then
+    VLLM_AVAILABLE=true
+else
+    # Check if there's a virtual environment
+    if [ -d "$INSTALL_DIR/.venv" ]; then
+        source "$INSTALL_DIR/.venv/bin/activate"
+        if python3 -c "import vllm" &> /dev/null; then
+            VLLM_AVAILABLE=true
+        fi
+    fi
+fi
+
+if [ "$VLLM_AVAILABLE" = false ]; then
+    print_warning "⚠️  vLLM not found. Some features may not work properly."
+    print_info "💡 Install vLLM: pip install vllm"
+fi
+
+# Change to installation directory
+cd "$INSTALL_DIR"
+
+# Start the application
+if [ "$1" = "--version" ]; then
+    node -e "console.log(require('./package.json').version)"
+elif [ "$1" = "--help" ]; then
+    node src/app.js --help
+else
+    # Start the Node.js application
+    node src/app.js "$@"
+fi
