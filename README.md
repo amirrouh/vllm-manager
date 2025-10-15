@@ -1,6 +1,6 @@
 # VLLM Terminal Manager
 
-A terminal-based tool for managing multiple VLLM models with smart GPU resource allocation.
+A complete terminal-based interface for managing multiple VLLM models with smart GPU resource allocation. **All operations are contained within the UI - no command line needed!**
 
 ## Terminal Interface
 
@@ -24,7 +24,8 @@ A terminal-based tool for managing multiple VLLM models with smart GPU resource 
 ║       Status: Stopped                                                       ║
 ║                                                                              ║
 ║  🎮 CONTROLS:                                                                ║
-║    ↑/↓ Navigate | Enter Start/Stop | a Add | d Delete | c Cleanup | q Quit  ║
+║    ↑/↓ Navigate | Enter Start/Stop | A Add | S Settings | D Delete          ║
+║    C Cleanup | K Kill Process | H Help | Q Quit                             ║
 ║                                                                              ║
 ╚══════════════════════════════════════════════════════════════════════════════╝
 ```
@@ -36,36 +37,47 @@ A terminal-based tool for managing multiple VLLM models with smart GPU resource 
 ./vm gui
 ```
 
-### Add a Model
-```bash
-./vm add my-model mistralai/Mistral-7B-Instruct-v0.2 --port 8001
-```
+**That's it! Everything is managed through the interface:**
 
-### Basic Commands
-```bash
-./vm list                # Show all models
-./vm start my-model      # Start a model
-./vm stop my-model       # Stop a model
-./vm status              # Check system status
-```
+- **Add Models** - Press `A` to open the add model dialog
+- **Configure Settings** - Press `S` to adjust GPU memory, priority, etc.
+- **Start/Stop Models** - Navigate with arrow keys and press Enter
+- **Remove Models** - Press `D` with confirmation dialog
+- **GPU Cleanup** - Press `C` to free memory with confirmation
+- **Kill Processes** - Press `K` to force-stop unresponsive models
 
 ## Features
 
+- **Complete UI Management** - All operations through terminal interface, no CLI needed
 - **Real-time GPU monitoring** - Track memory, utilization, and temperature
+- **Interactive dialogs** - Add models, configure settings, confirm deletions
 - **Priority system** - High-priority models get resources automatically
 - **Multi-model support** - Run several models simultaneously
 - **Smart cleanup** - Free memory by stopping low-priority models
+- **Process management** - Kill unresponsive processes safely
 
-## Terminal Controls
+## Complete UI Controls
 
 | Key | Action |
 |-----|--------|
 | ↑/↓ | Navigate models |
-| Enter | Start/Stop model |
-| a | Add model |
-| d | Delete model |
-| c | GPU cleanup |
-| q | Quit |
+| Enter/Space | Start/Stop selected model |
+| A | Add new model (interactive dialog) |
+| S | Model settings (GPU memory, priority, etc.) |
+| D | Delete model (with confirmation) |
+| C | GPU cleanup (with confirmation) |
+| K | Kill model process (force stop) |
+| H | Show help |
+| Q | Quit application |
+
+## Interactive Dialogs
+
+The UI now includes full-featured dialogs for all operations:
+
+- **Add Model Dialog** - Configure name, HuggingFace ID, port, priority, GPU memory
+- **Settings Dialog** - Modify GPU memory, priority levels, model parameters
+- **Confirmation Dialogs** - Safe deletion and cleanup with process information
+- **Help System** - Complete keyboard reference and usage guide
 
 ## Priority Levels
 
@@ -87,5 +99,7 @@ A terminal-based tool for managing multiple VLLM models with smart GPU resource 
 - vLLM installed
 
 ---
+
+**No Command Line Required!** The VLLM Manager is now a complete self-contained terminal interface. All model management operations are available through interactive dialogs - just launch `./vm gui` and manage everything from the comfort of your terminal!
 
 *The terminal manager automatically handles resource conflicts to keep your high-priority models running!*

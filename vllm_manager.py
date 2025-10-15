@@ -726,7 +726,7 @@ class ModernTerminalUI:
 
         controls = [
             "CONTROLS",
-            "↑/↓ • Navigate   ENTER • Start/Stop   A • Add   D • Delete   R • Refresh",
+            "↑/↓ • Navigate   ENTER • Start/Stop   A • Add   S • Settings   D • Delete",
             "K • Kill Process   C • Cleanup   H • Help   Q • Quit"
         ]
 
@@ -751,10 +751,11 @@ class ModernTerminalUI:
             "NAVIGATION:",
             "  ↑/↓ Arrow Keys    Navigate between models",
             "  ENTER or SPACE    Start/Stop selected model",
-            "  ESC               Return to dashboard",
+            "  ESC               Return to dashboard/Cancel dialog",
             "",
             "MODEL MANAGEMENT:",
             "  A                 Add new model configuration",
+            "  S                 Configure selected model settings",
             "  D                 Delete selected model",
             "  K                 Kill selected model process",
             "  R                 Refresh all model statuses",
@@ -811,6 +812,22 @@ class ModernTerminalUI:
 
                 if self.show_help:
                     self.draw_help(stdscr)
+                elif self.current_view == "add_model":
+                    self.draw_header(stdscr)
+                    self.draw_models_table(stdscr, 7)
+                    self.draw_add_model_dialog(stdscr)
+                elif self.current_view == "model_settings":
+                    self.draw_header(stdscr)
+                    self.draw_models_table(stdscr, 7)
+                    self.draw_model_settings_dialog(stdscr)
+                elif self.current_view == "delete_confirm":
+                    self.draw_header(stdscr)
+                    self.draw_models_table(stdscr, 7)
+                    self.draw_delete_confirmation_dialog(stdscr)
+                elif self.current_view == "cleanup_confirm":
+                    self.draw_header(stdscr)
+                    self.draw_models_table(stdscr, 7)
+                    self.draw_cleanup_confirmation_dialog(stdscr)
                 else:
                     self.draw_header(stdscr)
                     self.draw_models_table(stdscr, 7)
@@ -841,6 +858,11 @@ class ModernTerminalUI:
             self.show_help = False
             return
 
+        # Handle dialog input first
+        if self.current_view in ["add_model", "model_settings", "delete_confirm", "cleanup_confirm"]:
+            self.handle_dialog_input(key)
+            return
+
         models = list(self.model_manager.models.values())
 
         if key == ord('q') or key == 27:  # Q or ESC
@@ -859,12 +881,14 @@ class ModernTerminalUI:
                 self.set_status(msg)
         elif key == ord('a') or key == ord('A'):
             self.show_add_model_dialog()
+        elif key == ord('s') or key == ord('S'):
+            if models and 0 <= self.selected_index < len(models):
+                model = models[self.selected_index]
+                self.show_model_settings_dialog(model.name)
         elif key == ord('d') or key == ord('D'):
             if models and 0 <= self.selected_index < len(models):
                 model = models[self.selected_index]
-                if self.model_manager.remove_model(model.name):
-                    self.set_status(f"Model {model.name} removed")
-                    self.selected_index = max(0, self.selected_index - 1)
+                self.show_delete_confirmation_dialog(model.name)
         elif key == ord('r') or key == ord('R'):
             self.set_status("Refreshed")
         elif key == ord('k') or key == ord('K'):
@@ -876,14 +900,321 @@ class ModernTerminalUI:
                     else:
                         self.set_status("Failed to kill process")
         elif key == ord('c') or key == ord('C'):
-            success, msg = self.model_manager.aggressive_gpu_cleanup()
-            self.set_status(f"🧹 {msg}")
+            self.show_cleanup_confirmation_dialog()
         elif key == ord('h') or key == ord('H'):
             self.show_help = True
 
     def show_add_model_dialog(self):
-        """Show add model dialog (simplified for now)"""
-        self.set_status("Add model dialog - Use CLI: vm add <name> <model_id> --port <port>")
+        """Show add model dialog with full configuration"""
+        self.current_view = "add_model"
+        self.dialog_state = {
+            'field': 'name',
+            'name': '',
+            'huggingface_id': '',
+            'port': '8001',
+            'priority': '3',
+            'gpu_memory': '0.3',
+            'max_len': '2048',
+            'tensor_parallel': '1'
+        }
+
+    def show_model_settings_dialog(self, model_name: str):
+        """Show model settings configuration dialog"""
+        if model_name not in self.model_manager.models:
+            return
+
+        model = self.model_manager.models[model_name]
+        self.current_view = "model_settings"
+        self.dialog_state = {
+            'model_name': model_name,
+            'field': 'priority',
+            'priority': str(model.config.priority),
+            'gpu_memory': str(model.config.gpu_memory_utilization),
+            'max_len': str(model.config.max_model_len),
+            'tensor_parallel': str(model.config.tensor_parallel_size)
+        }
+
+    def show_delete_confirmation_dialog(self, model_name: str):
+        """Show delete confirmation dialog"""
+        self.current_view = "delete_confirm"
+        self.dialog_state = {
+            'model_name': model_name,
+            'confirmed': False
+        }
+
+    def show_cleanup_confirmation_dialog(self):
+        """Show GPU cleanup confirmation dialog"""
+        self.current_view = "cleanup_confirm"
+        self.dialog_state = {}
+
+    def draw_add_model_dialog(self, stdscr):
+        """Draw add model dialog"""
+        height, width = stdscr.getmaxyx()
+
+        dialog_width = 80
+        dialog_height = 20
+        dialog_x = (width - dialog_width) // 2
+        dialog_y = (height - dialog_height) // 2
+
+        self.draw_box(stdscr, dialog_x, dialog_y, dialog_width, dialog_height, "ADD NEW MODEL")
+
+        fields = [
+            ('name', 'Model Name:'),
+            ('huggingface_id', 'HuggingFace ID:'),
+            ('port', 'Port:'),
+            ('priority', 'Priority (1-5):'),
+            ('gpu_memory', 'GPU Memory (0.1-0.9):'),
+            ('max_len', 'Max Length:'),
+            ('tensor_parallel', 'Tensor Parallel:')
+        ]
+
+        y_offset = dialog_y + 2
+        for field, label in fields:
+            # Label
+            stdscr.addstr(y_offset, dialog_x + 4, label, self.colors['text'])
+
+            # Input field
+            input_value = self.dialog_state.get(field, '')
+            if self.dialog_state['field'] == field:
+                # Highlight current field
+                stdscr.addstr(y_offset, dialog_x + 25, input_value.ljust(40), self.colors['selected'])
+                # Show cursor
+                if hasattr(stdscr, 'curs_set'):
+                    stdscr.curs_set(1)
+                    stdscr.move(y_offset, dialog_x + 25 + len(input_value))
+            else:
+                stdscr.addstr(y_offset, dialog_x + 25, input_value.ljust(40), self.colors['normal'])
+
+            y_offset += 2
+
+        # Instructions
+        instructions = [
+            "TAB: Next field    ENTER: Save    ESC: Cancel",
+            "Popular models: mistralai/Mistral-7B-Instruct-v0.2, meta-llama/Llama-2-7b-chat-hf"
+        ]
+
+        y_offset = dialog_y + dialog_height - 4
+        for instruction in instructions:
+            stdscr.addstr(y_offset, dialog_x + (dialog_width - len(instruction)) // 2,
+                         instruction, self.colors['info'])
+            y_offset += 1
+
+    def draw_model_settings_dialog(self, stdscr):
+        """Draw model settings dialog"""
+        height, width = stdscr.getmaxyx()
+
+        dialog_width = 70
+        dialog_height = 16
+        dialog_x = (width - dialog_width) // 2
+        dialog_y = (height - dialog_height) // 2
+
+        model_name = self.dialog_state['model_name']
+        self.draw_box(stdscr, dialog_x, dialog_y, dialog_width, dialog_height, f"SETTINGS: {model_name}")
+
+        fields = [
+            ('priority', 'Priority (1-5):'),
+            ('gpu_memory', 'GPU Memory (0.1-0.9):'),
+            ('max_len', 'Max Length:'),
+            ('tensor_parallel', 'Tensor Parallel:')
+        ]
+
+        y_offset = dialog_y + 2
+        for field, label in fields:
+            # Label
+            stdscr.addstr(y_offset, dialog_x + 4, label, self.colors['text'])
+
+            # Input field
+            input_value = self.dialog_state.get(field, '')
+            if self.dialog_state['field'] == field:
+                # Highlight current field
+                stdscr.addstr(y_offset, dialog_x + 25, input_value.ljust(20), self.colors['selected'])
+                # Show cursor
+                if hasattr(stdscr, 'curs_set'):
+                    stdscr.curs_set(1)
+                    stdscr.move(y_offset, dialog_x + 25 + len(input_value))
+            else:
+                stdscr.addstr(y_offset, dialog_x + 25, input_value.ljust(20), self.colors['normal'])
+
+            y_offset += 2
+
+        # Instructions
+        instructions = "TAB: Next field    ENTER: Save    ESC: Cancel"
+        stdscr.addstr(dialog_y + dialog_height - 3, dialog_x + (dialog_width - len(instructions)) // 2,
+                     instructions, self.colors['info'])
+
+    def draw_delete_confirmation_dialog(self, stdscr):
+        """Draw delete confirmation dialog"""
+        height, width = stdscr.getmaxyx()
+
+        dialog_width = 60
+        dialog_height = 8
+        dialog_x = (width - dialog_width) // 2
+        dialog_y = (height - dialog_height) // 2
+
+        self.draw_box(stdscr, dialog_x, dialog_y, dialog_width, dialog_height, "CONFIRM DELETE")
+
+        model_name = self.dialog_state['model_name']
+        warning = f"Are you sure you want to delete '{model_name}'?"
+        stdscr.addstr(dialog_y + 3, dialog_x + (dialog_width - len(warning)) // 2,
+                     warning, self.colors['error'])
+
+        instructions = "Y: Yes, Delete    N: No, Cancel"
+        stdscr.addstr(dialog_y + dialog_height - 3, dialog_x + (dialog_width - len(instructions)) // 2,
+                     instructions, self.colors['info'])
+
+    def draw_cleanup_confirmation_dialog(self, stdscr):
+        """Draw GPU cleanup confirmation dialog"""
+        height, width = stdscr.getmaxyx()
+
+        dialog_width = 70
+        dialog_height = 10
+        dialog_x = (width - dialog_width) // 2
+        dialog_y = (height - dialog_height) // 2
+
+        self.draw_box(stdscr, dialog_x, dialog_y, dialog_width, dialog_height, "GPU CLEANUP")
+
+        # Get current GPU processes
+        processes = self.model_manager.system_monitor.get_gpu_processes()
+        total_memory = sum(p.gpu_memory_mb for p in processes)
+
+        warning = f"This will kill {len(processes)} processes using ~{total_memory:.0f}MB GPU memory."
+        warning2 = "Only lower priority processes (3+) will be terminated."
+        stdscr.addstr(dialog_y + 3, dialog_x + (dialog_width - len(warning)) // 2,
+                     warning, self.colors['error'])
+        stdscr.addstr(dialog_y + 4, dialog_x + (dialog_width - len(warning2)) // 2,
+                     warning2, self.colors['text'])
+
+        instructions = "Y: Yes, Cleanup    N: No, Cancel"
+        stdscr.addstr(dialog_y + dialog_height - 3, dialog_x + (dialog_width - len(instructions)) // 2,
+                     instructions, self.colors['info'])
+
+    def handle_dialog_input(self, key):
+        """Handle input in dialog mode"""
+        if self.current_view == "add_model":
+            self._handle_add_model_input(key)
+        elif self.current_view == "model_settings":
+            self._handle_model_settings_input(key)
+        elif self.current_view == "delete_confirm":
+            self._handle_delete_confirmation_input(key)
+        elif self.current_view == "cleanup_confirm":
+            self._handle_cleanup_confirmation_input(key)
+
+    def _handle_add_model_input(self, key):
+        """Handle input in add model dialog"""
+        if key == 27:  # ESC
+            self.current_view = "dashboard"
+            self.dialog_state = {}
+            if hasattr(self, 'curs_set'):
+                curses.curs_set(0)
+        elif key == ord('\t'):
+            # Tab to next field
+            fields = ['name', 'huggingface_id', 'port', 'priority', 'gpu_memory', 'max_len', 'tensor_parallel']
+            current_idx = fields.index(self.dialog_state['field'])
+            self.dialog_state['field'] = fields[(current_idx + 1) % len(fields)]
+        elif key == ord('\n'):
+            # Save and create model
+            try:
+                config = ModelConfig(
+                    name=self.dialog_state['name'],
+                    huggingface_id=self.dialog_state['huggingface_id'],
+                    port=int(self.dialog_state['port']),
+                    priority=int(self.dialog_state['priority']),
+                    gpu_memory_utilization=float(self.dialog_state['gpu_memory']),
+                    max_model_len=int(self.dialog_state['max_len']),
+                    tensor_parallel_size=int(self.dialog_state['tensor_parallel'])
+                )
+
+                if self.model_manager.add_model(config):
+                    self.set_status(f"Model {config.name} added successfully")
+                else:
+                    self.set_status(f"Model {config.name} already exists")
+
+                self.current_view = "dashboard"
+                self.dialog_state = {}
+                if hasattr(self, 'curs_set'):
+                    curses.curs_set(0)
+            except Exception as e:
+                self.set_status(f"Error: {str(e)}")
+        elif key == curses.KEY_BACKSPACE or key == 127:
+            # Backspace
+            current_field = self.dialog_state['field']
+            self.dialog_state[current_field] = self.dialog_state[current_field][:-1]
+        elif 32 <= key <= 126:  # Printable characters
+            current_field = self.dialog_state['field']
+            self.dialog_state[current_field] += chr(key)
+
+    def _handle_model_settings_input(self, key):
+        """Handle input in model settings dialog"""
+        if key == 27:  # ESC
+            self.current_view = "dashboard"
+            self.dialog_state = {}
+            if hasattr(self, 'curs_set'):
+                curses.curs_set(0)
+        elif key == ord('\t'):
+            # Tab to next field
+            fields = ['priority', 'gpu_memory', 'max_len', 'tensor_parallel']
+            current_idx = fields.index(self.dialog_state['field'])
+            self.dialog_state['field'] = fields[(current_idx + 1) % len(fields)]
+        elif key == ord('\n'):
+            # Save settings
+            try:
+                model_name = self.dialog_state['model_name']
+                model = self.model_manager.models[model_name]
+
+                # Update config
+                model.config.priority = int(self.dialog_state['priority'])
+                model.config.gpu_memory_utilization = float(self.dialog_state['gpu_memory'])
+                model.config.max_model_len = int(self.dialog_state['max_len'])
+                model.config.tensor_parallel_size = int(self.dialog_state['tensor_parallel'])
+
+                self.model_manager.save_config()
+                self.set_status(f"Settings for {model_name} updated")
+
+                self.current_view = "dashboard"
+                self.dialog_state = {}
+                if hasattr(self, 'curs_set'):
+                    curses.curs_set(0)
+            except Exception as e:
+                self.set_status(f"Error: {str(e)}")
+        elif key == curses.KEY_BACKSPACE or key == 127:
+            # Backspace
+            current_field = self.dialog_state['field']
+            self.dialog_state[current_field] = self.dialog_state[current_field][:-1]
+        elif 48 <= key <= 57 or key == 46:  # Numbers and decimal point
+            current_field = self.dialog_state['field']
+            self.dialog_state[current_field] += chr(key)
+
+    def _handle_delete_confirmation_input(self, key):
+        """Handle input in delete confirmation dialog"""
+        model_name = self.dialog_state['model_name']
+
+        if key == ord('y') or key == ord('Y'):
+            # Confirm delete
+            if self.model_manager.remove_model(model_name):
+                self.set_status(f"Model {model_name} removed")
+                self.selected_index = max(0, self.selected_index - 1)
+            else:
+                self.set_status(f"Failed to remove model {model_name}")
+
+            self.current_view = "dashboard"
+            self.dialog_state = {}
+        elif key == ord('n') or key == ord('N') or key == 27:  # N or ESC
+            # Cancel delete
+            self.current_view = "dashboard"
+            self.dialog_state = {}
+
+    def _handle_cleanup_confirmation_input(self, key):
+        """Handle input in cleanup confirmation dialog"""
+        if key == ord('y') or key == ord('Y'):
+            # Confirm cleanup
+            success, msg = self.model_manager.aggressive_gpu_cleanup()
+            self.set_status(f"🧹 {msg}")
+            self.current_view = "dashboard"
+            self.dialog_state = {}
+        elif key == ord('n') or key == ord('N') or key == 27:  # N or ESC
+            # Cancel cleanup
+            self.current_view = "dashboard"
+            self.dialog_state = {}
 
 # =============================================================================
 # MAIN APPLICATION
