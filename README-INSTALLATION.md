@@ -28,7 +28,7 @@ For remote installation, you need to host the installer somewhere. Here are your
 3. **Use the raw file URL**
 
 ```bash
-curl -sSL https://raw.githubusercontent.com/yourusername/vllm-manager/main/install-nodejs-complete.sh | bash
+curl -sSL https://raw.githubusercontent.com/amirrouh/vllm-manager/master/install-nodejs-complete.sh | bash
 ```
 
 #### B. Self-Hosted Web Server
