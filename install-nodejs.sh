@@ -115,7 +115,7 @@ mkdir -p "$INSTALL_DIR"
 cd "$INSTALL_DIR"
 
 # Download and extract the latest release
-RELEASE_URL="https://github.com/amirrouh/vllm-manager/archive/master.tar.gz"
+RELEASE_URL="https://codeload.github.com/amirrouh/vllm-manager/tar.gz/refs/heads/master"
 TEMP_FILE="/tmp/vllm-manager.tar.gz"
 
 print_info "⬇️  Downloading VLLM Manager..."
