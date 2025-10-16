@@ -115,8 +115,8 @@ mkdir -p "$INSTALL_DIR"
 cd "$INSTALL_DIR"
 
 # Download and extract the latest release
-RELEASE_URL="https://github.com/your-repo/vllm-manager-nodejs/archive/main.tar.gz"
-TEMP_FILE="/tmp/vllm-manager-nodejs.tar.gz"
+RELEASE_URL="https://github.com/amirrouh/vllm-manager/archive/master.tar.gz"
+TEMP_FILE="/tmp/vllm-manager.tar.gz"
 
 print_info "⬇️  Downloading VLLM Manager..."
 if command -v curl &> /dev/null; then
@@ -138,6 +138,15 @@ fi
 print_info "📂 Extracting files..."
 tar -xzf "$TEMP_FILE" --strip-components=1
 rm "$TEMP_FILE"
+
+# Copy nodejs-backend files to installation directory
+if [ -d "nodejs-backend" ]; then
+    cp -r nodejs-backend/* .
+    rm -rf nodejs-backend
+else
+    print_error "❌ nodejs-backend directory not found in release"
+    exit 1
+fi
 
 # Install dependencies
 print_info "📦 Installing Node.js dependencies..."
